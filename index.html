@@ -737,16 +737,19 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 <div class="modal-overlay" id="modal-crop">
 <div class="modal" style="max-width:420px">
   <h3 id="crop-title">✂️ Bild zuschneiden (Kartenformat 63×88)</h3>
-  <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Ziehe das Bild in den Rahmen und zoome mit dem Schieberegler. Das Ergebnis wird im Kartenverhältnis (63:88) gespeichert.</p>
-  <!-- Card-ratio crop area: 63:88 ≈ 0.716 → height = width / 0.716 -->
-  <div style="position:relative;width:100%;padding-bottom:140%;background:#111;border-radius:12px;overflow:hidden;cursor:grab;user-select:none;border:2px solid var(--accent)" id="crop-container">
-    <img id="crop-img" style="position:absolute;transform-origin:0 0;max-width:none;pointer-events:none"/>
-    <!-- Card corner decorations to show frame -->
-    <div style="position:absolute;inset:0;pointer-events:none;border-radius:10px;box-shadow:inset 0 0 0 3px rgba(233,69,96,.6)"></div>
-    <div style="position:absolute;top:6px;left:6px;width:18px;height:18px;border-top:3px solid var(--gold);border-left:3px solid var(--gold);border-radius:3px 0 0 0;pointer-events:none"></div>
-    <div style="position:absolute;top:6px;right:6px;width:18px;height:18px;border-top:3px solid var(--gold);border-right:3px solid var(--gold);border-radius:0 3px 0 0;pointer-events:none"></div>
-    <div style="position:absolute;bottom:6px;left:6px;width:18px;height:18px;border-bottom:3px solid var(--gold);border-left:3px solid var(--gold);border-radius:0 0 0 3px;pointer-events:none"></div>
-    <div style="position:absolute;bottom:6px;right:6px;width:18px;height:18px;border-bottom:3px solid var(--gold);border-right:3px solid var(--gold);border-radius:0 0 3px 0;pointer-events:none"></div>
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Ziehe den Rahmen auf den gewuenschten Ausschnitt. Du kannst ihn verschieben und an Kanten oder Ecken vergroessern. Das Ergebnis wird im Kartenverhaeltnis (63:88) gespeichert.</p>
+  <div style="position:relative;width:100%;height:min(66vh,520px);min-height:360px;background:#111;border-radius:12px;overflow:hidden;user-select:none;border:2px solid var(--accent);touch-action:none" id="crop-container">
+    <img id="crop-img" style="position:absolute;max-width:none;pointer-events:none;user-select:none"/>
+    <div id="crop-box" style="position:absolute;border:2px solid var(--gold);box-shadow:0 0 0 9999px rgba(0,0,0,.48),0 0 0 1px rgba(0,0,0,.4) inset;cursor:move">
+      <div data-crop-handle="nw" style="position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nwse-resize"></div>
+      <div data-crop-handle="n" style="position:absolute;left:50%;top:-8px;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ns-resize"></div>
+      <div data-crop-handle="ne" style="position:absolute;right:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nesw-resize"></div>
+      <div data-crop-handle="e" style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ew-resize"></div>
+      <div data-crop-handle="se" style="position:absolute;right:-8px;bottom:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nwse-resize"></div>
+      <div data-crop-handle="s" style="position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ns-resize"></div>
+      <div data-crop-handle="sw" style="position:absolute;left:-8px;bottom:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nesw-resize"></div>
+      <div data-crop-handle="w" style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ew-resize"></div>
+    </div>
   </div>
   <div style="margin-top:12px">
     <label style="font-size:.8rem;color:var(--muted)">Zoom</label>
@@ -1243,6 +1246,39 @@ function buildSessionSnapshot(name, finalize=false) {
     setupPhase: state._setupPhase || null,
     marathonStarted: !!state._marathonStarted
   };
+}
+
+function getVetoEligibleGameCount(source = state) {
+  const players = source.players || [];
+  const games = source.games || [];
+  const plan = source.plan || [];
+  const previewOrder = source.previewOrder || [];
+  if (plan.length) return plan.length;
+  if (previewOrder.length) {
+    return previewOrder.filter(id => {
+      const g = games.find(g => g.id === id);
+      return g && g.enabled !== false && g.minP <= players.length && g.maxP >= players.length;
+    }).length;
+  }
+  return games.filter(g =>
+    g.enabled !== false &&
+    g.minP <= players.length &&
+    g.maxP >= players.length
+  ).length;
+}
+
+function canPickVetoJoker(source = state) {
+  const players = source.players || [];
+  return getVetoEligibleGameCount(source) > players.length;
+}
+
+function removeInvalidVetoPicks() {
+  if (canPickVetoJoker()) return;
+  Object.values(state.jokerPicks || {}).forEach(picks => {
+    if (!Array.isArray(picks)) return;
+    const idx = picks.indexOf('veto');
+    if (idx >= 0) picks.splice(idx, 1);
+  });
 }
 
 function openHomeChoiceModal() {
@@ -1883,6 +1919,7 @@ function startMarathon() {
 
 // ── Joker Pick Screen ──────────────────────────────────────
 function renderJokerPickScreen() {
+  removeInvalidVetoPicks();
   const c = document.getElementById('joker-pick-players');
   c.innerHTML = state.players.map(p => {
     const picks = state.jokerPicks[p.name] || [];
@@ -1896,16 +1933,9 @@ function renderJokerPickScreen() {
         ${JOKER_DEFS.map(jd => {
           const selected = picks.includes(jd.id);
           const othersFull = !selected && picks.length >= 2;
-          // Veto requires at least playerCount+2 enabled+compatible games
-          const enabledCount = state.previewOrder && state.previewOrder.length
-            ? state.previewOrder.filter(id => {
-                const g = state.games.find(g=>g.id===id);
-                return g && g.enabled!==false;
-              }).length
-            : state.games.filter(g=>g.enabled!==false&&g.minP<=state.players.length&&g.maxP>=state.players.length).length;
-          const vetoDisabled = jd.id==='veto' && enabledCount < state.players.length + 2;
+          const vetoDisabled = jd.id==='veto' && !canPickVetoJoker();
           const disabled = othersFull || vetoDisabled;
-          const disabledTitle = vetoDisabled ? `Mindestens ${state.players.length+2} Spiele nötig für Veto` : '';
+          const disabledTitle = vetoDisabled ? 'Nur verfuegbar, wenn es mehr Spiele als Spieler gibt.' : '';
           return `<div class="joker-card joker-selectable ${selected?'joker-selected':''} ${disabled?'joker-used':''}"
             onclick="${disabled ? '' : `toggleJokerPick('${esc(p.name)}','${jd.id}')`}"
             title="${disabledTitle}" style="${vetoDisabled?'opacity:.45;cursor:not-allowed':''}">
@@ -1914,7 +1944,7 @@ function renderJokerPickScreen() {
             </div>
             <div class="joker-footer">
               <div class="joker-name">${jd.name}</div>
-              <div class="joker-desc">${vetoDisabled ? '⚠️ Zu wenige Spiele geplant' : jd.desc}</div>
+              <div class="joker-desc">${vetoDisabled ? 'Nur verfuegbar, wenn es mehr Spiele als Spieler gibt.' : jd.desc}</div>
             </div>
           </div>`;
         }).join('')}
@@ -1932,6 +1962,10 @@ function renderJokerPickScreen() {
 }
 
 function toggleJokerPick(playerName, jokerId) {
+  if (jokerId === 'veto' && !canPickVetoJoker()) {
+    showToast('Veto ist nur verfuegbar, wenn es mehr Spiele als Spieler gibt.');
+    return;
+  }
   const picks = state.jokerPicks[playerName];
   const idx = picks.indexOf(jokerId);
   if (idx >= 0) {
@@ -3052,7 +3086,7 @@ function showEndScreen() {
   );
   const gameCount = state.history.length;
   const playerCount = state.players.length;
-  const vetoAllowed = gameCount >= playerCount + 2;
+  const vetoAllowed = gameCount > playerCount;
 
   if (vetoPlayers.length && vetoAllowed) {
     state._vetoFromEndScreen = true;
@@ -3461,6 +3495,10 @@ let cropTarget = null;
 let cropSrcDataUrl = '';
 let cropOffsetX = 0, cropOffsetY = 0, cropZoom = 1;
 let cropDragging = false, cropDragStartX = 0, cropDragStartY = 0;
+let cropBase = {x:0,y:0,w:0,h:0};
+let cropBox = {x:0,y:0,w:0,h:0};
+let cropPointer = null;
+const CROP_RATIO = 63 / 88;
 
 function renderJokerSettingsList() {
   const c = document.getElementById('joker-settings-list');
@@ -3673,9 +3711,11 @@ function initCropEditor(src) {
   img.onload = () => {
     cropOffsetX = 0; cropOffsetY = 0; cropZoom = 1;
     document.getElementById('crop-zoom').value = 100;
-    updateCropTransform();
     openModal('modal-crop');
-    setupCropDrag();
+    requestAnimationFrame(() => {
+      initManualCropBox();
+      setupCropDrag();
+    });
   };
 }
 
@@ -3686,25 +3726,128 @@ function updateCropZoom() {
 
 function updateCropTransform() {
   const img = document.getElementById('crop-img');
-  img.style.transform = `translate(${cropOffsetX}px, ${cropOffsetY}px) scale(${cropZoom})`;
+  const c = document.getElementById('crop-container');
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  if (!iw || !ih || !c) return;
+  const fit = Math.min(c.clientWidth / iw, c.clientHeight / ih) * cropZoom;
+  const w = iw * fit, h = ih * fit;
+  cropBase = {
+    x: (c.clientWidth - w) / 2 + cropOffsetX,
+    y: (c.clientHeight - h) / 2 + cropOffsetY,
+    w,
+    h
+  };
+  img.style.width = `${w}px`;
+  img.style.height = `${h}px`;
+  img.style.left = `${cropBase.x}px`;
+  img.style.top = `${cropBase.y}px`;
+  img.style.transform = 'none';
+  clampCropBoxToImage();
+  renderCropBox();
 }
 
 function setupCropDrag() {
   const c = document.getElementById('crop-container');
-  c.onmousedown = e => { cropDragging=true; cropDragStartX=e.clientX-cropOffsetX; cropDragStartY=e.clientY-cropOffsetY; c.style.cursor='grabbing'; };
-  c.onmousemove = e => { if (!cropDragging) return; cropOffsetX=e.clientX-cropDragStartX; cropOffsetY=e.clientY-cropDragStartY; updateCropTransform(); };
-  c.onmouseup = () => { cropDragging=false; c.style.cursor='grab'; };
-  c.onmouseleave = () => { cropDragging=false; c.style.cursor='grab'; };
-  // Touch support
-  c.ontouchstart = e => { const t=e.touches[0]; cropDragging=true; cropDragStartX=t.clientX-cropOffsetX; cropDragStartY=t.clientY-cropOffsetY; e.preventDefault(); };
-  c.ontouchmove  = e => { if (!cropDragging) return; const t=e.touches[0]; cropOffsetX=t.clientX-cropDragStartX; cropOffsetY=t.clientY-cropDragStartY; updateCropTransform(); e.preventDefault(); };
-  c.ontouchend   = () => { cropDragging=false; };
+  const box = document.getElementById('crop-box');
+  c.onpointerdown = null;
+  c.onpointermove = null;
+  c.onpointerup = null;
+  c.onpointercancel = null;
+  box.onpointerdown = e => {
+    e.preventDefault();
+    e.stopPropagation();
+    cropPointer = {
+      mode: e.target.dataset.cropHandle ? 'resize' : 'move',
+      handle: e.target.dataset.cropHandle || '',
+      startX: e.clientX,
+      startY: e.clientY,
+      box: {...cropBox}
+    };
+    box.setPointerCapture(e.pointerId);
+  };
+  box.onpointermove = e => {
+    if (!cropPointer) return;
+    e.preventDefault();
+    const dx = e.clientX - cropPointer.startX;
+    const dy = e.clientY - cropPointer.startY;
+    if (cropPointer.mode === 'move') moveCropBox(dx, dy);
+    else resizeCropBox(cropPointer.handle, dx, dy);
+  };
+  box.onpointerup = e => {
+    cropPointer = null;
+    try { box.releasePointerCapture(e.pointerId); } catch {}
+  };
+  box.onpointercancel = () => { cropPointer = null; };
+}
+
+function initManualCropBox() {
+  updateCropTransform();
+  const maxW = Math.min(cropBase.w, cropBase.h * CROP_RATIO);
+  const maxH = maxW / CROP_RATIO;
+  const w = Math.max(70, maxW * 0.82);
+  const h = w / CROP_RATIO;
+  cropBox = {
+    x: cropBase.x + (cropBase.w - w) / 2,
+    y: cropBase.y + (cropBase.h - h) / 2,
+    w,
+    h
+  };
+  clampCropBoxToImage();
+  renderCropBox();
+}
+
+function renderCropBox() {
+  const box = document.getElementById('crop-box');
+  if (!box) return;
+  box.style.left = `${cropBox.x}px`;
+  box.style.top = `${cropBox.y}px`;
+  box.style.width = `${cropBox.w}px`;
+  box.style.height = `${cropBox.h}px`;
+}
+
+function clampCropBoxToImage() {
+  const maxW = Math.max(20, Math.min(cropBase.w, cropBase.h * CROP_RATIO));
+  const minW = Math.min(70, maxW);
+  cropBox.w = Math.max(minW, Math.min(cropBox.w || maxW, maxW));
+  cropBox.h = cropBox.w / CROP_RATIO;
+  cropBox.x = Math.max(cropBase.x, Math.min(cropBox.x, cropBase.x + cropBase.w - cropBox.w));
+  cropBox.y = Math.max(cropBase.y, Math.min(cropBox.y, cropBase.y + cropBase.h - cropBox.h));
+}
+
+function moveCropBox(dx, dy) {
+  cropBox.x = cropPointer.box.x + dx;
+  cropBox.y = cropPointer.box.y + dy;
+  clampCropBoxToImage();
+  renderCropBox();
+}
+
+function resizeCropBox(handle, dx, dy) {
+  const b = cropPointer.box;
+  const leftAnchored = handle.includes('w');
+  const topAnchored = handle.includes('n');
+  let delta = 0;
+  if (handle.includes('e')) delta = dx;
+  else if (handle.includes('w')) delta = -dx;
+  else if (handle.includes('s')) delta = dy * CROP_RATIO;
+  else if (handle.includes('n')) delta = -dy * CROP_RATIO;
+
+  const maxRight = leftAnchored ? b.x + b.w - cropBase.x : cropBase.x + cropBase.w - b.x;
+  const maxBottomWidth = topAnchored ? (b.y + b.h - cropBase.y) * CROP_RATIO : (cropBase.y + cropBase.h - b.y) * CROP_RATIO;
+  const maxW = Math.max(20, Math.min(maxRight, maxBottomWidth));
+  const minW = Math.min(70, maxW);
+  const nextW = Math.max(minW, Math.min(b.w + delta, maxW));
+  const nextH = nextW / CROP_RATIO;
+
+  cropBox.w = nextW;
+  cropBox.h = nextH;
+  cropBox.x = leftAnchored ? b.x + b.w - nextW : b.x;
+  cropBox.y = topAnchored ? b.y + b.h - nextH : b.y;
+  clampCropBoxToImage();
+  renderCropBox();
 }
 
 function applyCrop() {
-  const container = document.getElementById('crop-container');
   const img = document.getElementById('crop-img');
-  const cw = container.clientWidth, ch = container.clientHeight;
   const iw = img.naturalWidth, ih = img.naturalHeight;
   // Output in 63:88 card ratio (scale up for quality)
   const outW = 252, outH = 352; // 4× card size
@@ -3712,12 +3855,13 @@ function applyCrop() {
   canvas.width = outW; canvas.height = outH;
   const ctx = canvas.getContext('2d');
 
-  // Compute source rect visible in container
-  const scale = cropZoom;
-  const sx = Math.max(0, -cropOffsetX / scale);
-  const sy = Math.max(0, -cropOffsetY / scale);
-  const sw = Math.min(iw - sx, cw / scale);
-  const sh = Math.min(ih - sy, ch / scale);
+  // Compute source rect from the manually positioned card-ratio crop box.
+  const scaleX = iw / cropBase.w;
+  const scaleY = ih / cropBase.h;
+  const sx = Math.max(0, (cropBox.x - cropBase.x) * scaleX);
+  const sy = Math.max(0, (cropBox.y - cropBase.y) * scaleY);
+  const sw = Math.min(iw - sx, cropBox.w * scaleX);
+  const sh = Math.min(ih - sy, cropBox.h * scaleY);
 
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
   const result = canvas.toDataURL('image/jpeg', 0.88);
@@ -4849,6 +4993,7 @@ window.startMarathon = function startMarathon() {
 };
 
 window.renderJokerPickScreen = function renderJokerPickScreen() {
+  removeInvalidVetoPicks();
   const c = document.getElementById('joker-pick-players');
   if (!c) return;
 
@@ -4939,7 +5084,9 @@ window.fbListenGuestActions = function fbListenGuestActions() {
     if (action.type === 'jokerPick') {
       const p = state.players.find(x => x.name === action.playerName);
       const validIds = new Set(JOKER_DEFS.map(j=>j.id));
-      const picks = Array.isArray(action.picks) ? action.picks.filter(id=>validIds.has(id)).slice(0,2) : [];
+      const picks = Array.isArray(action.picks)
+        ? action.picks.filter(id => validIds.has(id) && (id !== 'veto' || canPickVetoJoker())).slice(0,2)
+        : [];
       if (p && picks.length === 2) {
         state.jokerPicks[p.name] = picks;
         renderJokerPickScreen();
@@ -5020,6 +5167,10 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     if (!window._mobilePicks) window._mobilePicks = {};
     if (!window._mobilePicks[sessionId + playerName]) window._mobilePicks[sessionId + playerName] = [...savedPicks];
     const currentPicks = window._mobilePicks[sessionId + playerName];
+    const mobileCanPickVeto = canPickVetoJoker(data);
+    if (!mobileCanPickVeto && currentPicks.includes('veto')) {
+      currentPicks.splice(currentPicks.indexOf('veto'), 1);
+    }
 
     if ((data.phase === 'jokerPick' || !data.marathonStarted) && !(data.jokers?.[playerName]?.length)) {
       const done = savedPicks.length >= 2;
@@ -5033,8 +5184,9 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
           ${pickDefs.map(j => {
             const selected = currentPicks.includes(j.id);
             const disabled = !selected && currentPicks.length >= 2;
-            return `<button onclick="smMobileToggleJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')"
-              style="position:relative;min-height:196px;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:0;overflow:hidden;opacity:${disabled?.45:1};text-align:left">
+            const vetoBlocked = j.id === 'veto' && !mobileCanPickVeto;
+            return `<button onclick="${vetoBlocked ? '' : `smMobileToggleJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')`}"
+              style="position:relative;min-height:196px;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:0;overflow:hidden;opacity:${(disabled||vetoBlocked)?.45:1};text-align:left;${vetoBlocked?'filter:grayscale(70%);cursor:not-allowed':''}">
               <div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="height:126px;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;color:#111;font-size:2rem">
                 ${smJokerVisualHtml(j)}
                 <div style="position:absolute;left:8px;top:8px;background:rgba(17,17,17,.72);color:#fff;border-radius:999px;padding:4px 8px;font-size:.68rem;font-weight:900">Ansehen</div>
@@ -5042,7 +5194,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
               </div>
               <div style="padding:9px">
                 <div style="font-weight:900;font-size:.82rem;margin-bottom:4px;color:${selected?'#ffd700':'#fff'}">${smMobileEsc(j.name)}</div>
-                <div style="font-size:.68rem;color:#aaa;line-height:1.35">${smMobileEsc(j.desc)}</div>
+                <div style="font-size:.68rem;color:#aaa;line-height:1.35">${vetoBlocked ? 'Nur verfuegbar, wenn es mehr Spiele als Spieler gibt.' : smMobileEsc(j.desc)}</div>
               </div>
             </button>`;
           }).join('')}
@@ -5105,30 +5257,46 @@ window.smMobileToggleJoker = function smMobileToggleJoker(sessionId, playerName,
   const key = sessionId + playerName;
   if (!window._mobilePicks) window._mobilePicks = {};
   const picks = window._mobilePicks[key] || (window._mobilePicks[key] = []);
-  const idx = picks.indexOf(jokerId);
-  if (idx >= 0) picks.splice(idx,1);
-  else if (picks.length < 2) picks.push(jokerId);
-  // force a visual refresh by re-reading current firebase snapshot quickly
+
   firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
     const data = snap.val();
     if (!data) return;
+    if (jokerId === 'veto' && !canPickVetoJoker(data)) {
+      const vetoIdx = picks.indexOf('veto');
+      if (vetoIdx >= 0) picks.splice(vetoIdx, 1);
+      showToast('Veto ist nur verfuegbar, wenn es mehr Spiele als Spieler gibt.');
+      return;
+    }
+
+    const idx = picks.indexOf(jokerId);
+    if (idx >= 0) picks.splice(idx,1);
+    else if (picks.length < 2) picks.push(jokerId);
+
     const event = new CustomEvent('sm-mobile-local-refresh', {detail:data});
     document.dispatchEvent(event);
+    firebase.database().ref(`sessions/${sessionId}/mobileDrafts/${encodeURIComponent(playerName)}`).set({picks, ts:Date.now()}).catch(()=>{});
   });
-  // Simpler: rerender on next Firebase tick by sending a lightweight draft too
+
   const c = document.getElementById('mobile-content');
   if (c) c.querySelector('button[onclick^="smMobileSubmitJokerPick"]')?.focus();
-  // Manual rerender without waiting: call renderMobilePlayerView listener isn't directly accessible, so update by pushing a draft to sessionStorage and reload hash view after 0 ms is avoided.
-  firebase.database().ref(`sessions/${sessionId}/mobileDrafts/${encodeURIComponent(playerName)}`).set({picks, ts:Date.now()}).catch(()=>{});
 };
 
 window.smMobileSubmitJokerPick = function smMobileSubmitJokerPick(sessionId, playerName) {
   const key = sessionId + playerName;
   const picks = (window._mobilePicks && window._mobilePicks[key]) || [];
   if (picks.length !== 2) return;
-  firebase.database().ref(`sessions/${sessionId}/guestActions`).push({type:'jokerPick', playerName, picks, ts:Date.now()});
-  const c = document.getElementById('mobile-content');
-  if (c) c.insertAdjacentHTML('afterbegin', `<div style="background:#0d2a1a;border:1px solid #4ecdc4;color:#4ecdc4;border-radius:10px;padding:10px;margin-bottom:10px;text-align:center;font-weight:800">✅ Auswahl gesendet!</div>`);
+  firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
+    const data = snap.val();
+    if (!data) return;
+    if (picks.includes('veto') && !canPickVetoJoker(data)) {
+      picks.splice(picks.indexOf('veto'), 1);
+      showToast('Veto ist nur verfuegbar, wenn es mehr Spiele als Spieler gibt.');
+      return;
+    }
+    firebase.database().ref(`sessions/${sessionId}/guestActions`).push({type:'jokerPick', playerName, picks, ts:Date.now()});
+    const c = document.getElementById('mobile-content');
+    if (c) c.insertAdjacentHTML('afterbegin', `<div style="background:#0d2a1a;border:1px solid #4ecdc4;color:#4ecdc4;border-radius:10px;padding:10px;margin-bottom:10px;text-align:center;font-weight:800">✅ Auswahl gesendet!</div>`);
+  });
 };
 
 // Make mobile local toggles visibly update by listening to the draft branch too.
@@ -5407,6 +5575,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   }
 
   window.startSecretGoals = function startSecretGoals(){
+    removeInvalidVetoPicks();
     const missing = state.players.filter(p => (state.jokerPicks[p.name] || []).length < 2);
     if (missing.length) {
       showToast(`${missing.map(p => p.name).join(', ')} müssen noch 2 Joker wählen!`);
