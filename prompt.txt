@@ -1,0 +1,20 @@
+Bitte behebe jetzt den Bug in index.html:
+
+Wenn der Host nach der privaten Jokerwahl auf „Marathon starten“ klickt, sollen die Geheimziele nur einmal privat an die Handys verteilt werden und danach muss der Marathon wirklich starten.
+
+Aktuell ändert sich offenbar nur das Geheimziel am Handy pro Klick, aber der Host bleibt in der Joker-/Setup-Ansicht.
+
+Bitte prüfe besonders:
+- die finale startSecretGoals()-Funktion
+- _finishSetupAndStart()
+- state._setupPhase
+- state._marathonStarted
+- Firebase phase/marathonStarted
+- showScreen('screen-marathon')
+- nextGame()
+
+Baue außerdem eine robuste Sperre ein:
+Am Handy dürfen Joker erst eingesetzt werden, wenn data.marathonStarted true ist und data.phase === 'marathon'.
+
+Bitte ändere nur index.html.
+Erkläre mir danach kurz, welche Funktionen du geändert hast.

@@ -736,19 +736,19 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 <!-- Image Crop Modal -->
 <div class="modal-overlay" id="modal-crop">
 <div class="modal" style="max-width:420px">
-  <h3 id="crop-title">✂️ Bild zuschneiden (Kartenformat 63×88)</h3>
-  <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Ziehe den Rahmen auf den gewuenschten Ausschnitt. Du kannst ihn verschieben und an Kanten oder Ecken vergroessern. Das Ergebnis wird im Kartenverhaeltnis (63:88) gespeichert.</p>
+  <h3 id="crop-title">Bild zuschneiden</h3>
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Ziehe den Rahmen auf den gewuenschten Ausschnitt. Du kannst ihn verschieben und jede Kante oder Ecke einzeln anpassen.</p>
   <div style="position:relative;width:100%;height:min(66vh,520px);min-height:360px;background:#111;border-radius:12px;overflow:hidden;user-select:none;border:2px solid var(--accent);touch-action:none" id="crop-container">
     <img id="crop-img" style="position:absolute;max-width:none;pointer-events:none;user-select:none"/>
     <div id="crop-box" style="position:absolute;border:2px solid var(--gold);box-shadow:0 0 0 9999px rgba(0,0,0,.48),0 0 0 1px rgba(0,0,0,.4) inset;cursor:move">
-      <div data-crop-handle="nw" style="position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nwse-resize"></div>
-      <div data-crop-handle="n" style="position:absolute;left:50%;top:-8px;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ns-resize"></div>
-      <div data-crop-handle="ne" style="position:absolute;right:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nesw-resize"></div>
-      <div data-crop-handle="e" style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ew-resize"></div>
-      <div data-crop-handle="se" style="position:absolute;right:-8px;bottom:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nwse-resize"></div>
-      <div data-crop-handle="s" style="position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ns-resize"></div>
-      <div data-crop-handle="sw" style="position:absolute;left:-8px;bottom:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nesw-resize"></div>
-      <div data-crop-handle="w" style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ew-resize"></div>
+      <div data-crop-handle="handle-top-left" style="position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nwse-resize"></div>
+      <div data-crop-handle="handle-top" style="position:absolute;left:50%;top:-8px;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ns-resize"></div>
+      <div data-crop-handle="handle-top-right" style="position:absolute;right:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nesw-resize"></div>
+      <div data-crop-handle="handle-right" style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ew-resize"></div>
+      <div data-crop-handle="handle-bottom-right" style="position:absolute;right:-8px;bottom:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nwse-resize"></div>
+      <div data-crop-handle="handle-bottom" style="position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ns-resize"></div>
+      <div data-crop-handle="handle-bottom-left" style="position:absolute;left:-8px;bottom:-8px;width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:nesw-resize"></div>
+      <div data-crop-handle="handle-left" style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;background:var(--gold);border:2px solid #111;cursor:ew-resize"></div>
     </div>
   </div>
   <div style="margin-top:12px">
@@ -1118,6 +1118,7 @@ let state = {
   timeLimit:120,
   startTime:null,
   activeJokers:{},
+  _marathonFinished:false,
   editGameId:null,
 };
 
@@ -1165,6 +1166,7 @@ function resetMarathonRuntime(options = {}) {
   state.activeJokers = {};
   state.startTime = null;
   state._marathonStarted = false;
+  state._marathonFinished = false;
   state._setupPhase = null;
   state._forceLocalJokerPick = false;
   state._vetoFromEndScreen = false;
@@ -1244,7 +1246,8 @@ function buildSessionSnapshot(name, finalize=false) {
     startTime: state.startTime,
     games: state.games,
     setupPhase: state._setupPhase || null,
-    marathonStarted: !!state._marathonStarted
+    marathonStarted: !!state._marathonStarted,
+    marathonFinished: !!state._marathonFinished
   };
 }
 
@@ -1897,6 +1900,7 @@ function startMarathon() {
   state.comebackGiven = {};
   state.goalAchieved = {};
   state._marathonStarted = false;
+  state._marathonFinished = false;
   state._vetoFromEndScreen = false;
   state.currentIdx = -1;
   state.jokerPicks = {};
@@ -2117,14 +2121,24 @@ function nextGame() {
     switchTab('tab-current');
     return;
   }
-  // If there's a random event pending, show it before advancing
-  if (state.history.length > 0 && !pendingNextGame && Math.random() < 0.4) {
+  // If there's a random event pending, show it only when a real next game exists.
+  if (state.history.length > 0 && !pendingNextGame && canShowRandomEvent() && Math.random() < 0.4) {
     pendingNextGame = true;
     showRandomEvent();
   } else {
     pendingNextGame = false;
     _doNextGame();
   }
+}
+
+function hasNextPlayableGame() {
+  let idx = state.currentIdx + 1;
+  while (idx < state.plan.length && state.plan[idx]?.done) idx++;
+  return idx < state.plan.length;
+}
+
+function canShowRandomEvent() {
+  return state.currentIdx < state.plan.length - 1 && hasNextPlayableGame();
 }
 
 function _doNextGame() {
@@ -2952,6 +2966,7 @@ function loadSession(id) {
   state.activeJokers = s.activeJokers || {};
   state._setupPhase = s.setupPhase || null;
   state._marathonStarted = s.marathonStarted ?? true;
+  state._marathonFinished = !!s.marathonFinished;
   state._vetoFromEndScreen = false;
   if (s.games) state.games = s.games;
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
@@ -3243,6 +3258,8 @@ function skipVeto() {
 function _finishEndScreen() {
   // Secret goals reveal (updates scores before display)
   checkSecretGoalsEnd();
+  state._setupPhase = 'finished';
+  state._marathonFinished = true;
 
   const sorted = [...state.players].sort((a,b)=>state.scores[b.name]-state.scores[a.name]);
   const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
@@ -3268,6 +3285,8 @@ function _finishEndScreen() {
   setTimeout(()=>launchConfetti(5000), 300);
   setTimeout(()=>soundWin(), 100);
   haptic([100,50,100,50,300]);
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+  saveCurrentToLS();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3343,6 +3362,7 @@ function saveCurrentToLS() {
     jokers:state.jokers, timeLimit:state.timeLimit, startTime:state.startTime,
     games:state.games, jokerPicks:state.jokerPicks, skipped:state.skipped,
     secretGoals:state.secretGoals, secretGoalExtras:state.secretGoalExtras, comebackGiven:state.comebackGiven, goalAchieved:state.goalAchieved, giftedJokers:state.giftedJokers,
+    setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
   };
   setSessions(sessions);
   // Push to Firebase if host
@@ -3783,7 +3803,6 @@ function setupCropDrag() {
 function initManualCropBox() {
   updateCropTransform();
   const maxW = Math.min(cropBase.w, cropBase.h * CROP_RATIO);
-  const maxH = maxW / CROP_RATIO;
   const w = Math.max(70, maxW * 0.82);
   const h = w / CROP_RATIO;
   cropBox = {
@@ -3806,10 +3825,10 @@ function renderCropBox() {
 }
 
 function clampCropBoxToImage() {
-  const maxW = Math.max(20, Math.min(cropBase.w, cropBase.h * CROP_RATIO));
-  const minW = Math.min(70, maxW);
-  cropBox.w = Math.max(minW, Math.min(cropBox.w || maxW, maxW));
-  cropBox.h = cropBox.w / CROP_RATIO;
+  const minW = Math.min(50, Math.max(1, cropBase.w));
+  const minH = Math.min(50, Math.max(1, cropBase.h));
+  cropBox.w = Math.max(minW, Math.min(cropBox.w || cropBase.w, cropBase.w));
+  cropBox.h = Math.max(minH, Math.min(cropBox.h || cropBase.h, cropBase.h));
   cropBox.x = Math.max(cropBase.x, Math.min(cropBox.x, cropBase.x + cropBase.w - cropBox.w));
   cropBox.y = Math.max(cropBase.y, Math.min(cropBox.y, cropBase.y + cropBase.h - cropBox.h));
 }
@@ -3823,47 +3842,50 @@ function moveCropBox(dx, dy) {
 
 function resizeCropBox(handle, dx, dy) {
   const b = cropPointer.box;
-  const leftAnchored = handle.includes('w');
-  const topAnchored = handle.includes('n');
-  let delta = 0;
-  if (handle.includes('e')) delta = dx;
-  else if (handle.includes('w')) delta = -dx;
-  else if (handle.includes('s')) delta = dy * CROP_RATIO;
-  else if (handle.includes('n')) delta = -dy * CROP_RATIO;
+  const minW = Math.min(50, Math.max(1, cropBase.w));
+  const minH = Math.min(50, Math.max(1, cropBase.h));
+  let left = b.x;
+  let right = b.x + b.w;
+  let top = b.y;
+  let bottom = b.y + b.h;
 
-  const maxRight = leftAnchored ? b.x + b.w - cropBase.x : cropBase.x + cropBase.w - b.x;
-  const maxBottomWidth = topAnchored ? (b.y + b.h - cropBase.y) * CROP_RATIO : (cropBase.y + cropBase.h - b.y) * CROP_RATIO;
-  const maxW = Math.max(20, Math.min(maxRight, maxBottomWidth));
-  const minW = Math.min(70, maxW);
-  const nextW = Math.max(minW, Math.min(b.w + delta, maxW));
-  const nextH = nextW / CROP_RATIO;
+  if (handle.includes('left')) {
+    left = Math.max(cropBase.x, Math.min(b.x + dx, right - minW));
+  }
+  if (handle.includes('right')) {
+    right = Math.min(cropBase.x + cropBase.w, Math.max(b.x + minW, b.x + b.w + dx));
+  }
+  if (handle.includes('top')) {
+    top = Math.max(cropBase.y, Math.min(b.y + dy, bottom - minH));
+  }
+  if (handle.includes('bottom')) {
+    bottom = Math.min(cropBase.y + cropBase.h, Math.max(b.y + minH, b.y + b.h + dy));
+  }
 
-  cropBox.w = nextW;
-  cropBox.h = nextH;
-  cropBox.x = leftAnchored ? b.x + b.w - nextW : b.x;
-  cropBox.y = topAnchored ? b.y + b.h - nextH : b.y;
-  clampCropBoxToImage();
+  cropBox.x = left;
+  cropBox.y = top;
+  cropBox.w = right - left;
+  cropBox.h = bottom - top;
   renderCropBox();
 }
 
 function applyCrop() {
   const img = document.getElementById('crop-img');
   const iw = img.naturalWidth, ih = img.naturalHeight;
-  // Output in 63:88 card ratio (scale up for quality)
-  const outW = 252, outH = 352; // 4× card size
   const canvas = document.createElement('canvas');
-  canvas.width = outW; canvas.height = outH;
-  const ctx = canvas.getContext('2d');
 
-  // Compute source rect from the manually positioned card-ratio crop box.
   const scaleX = iw / cropBase.w;
   const scaleY = ih / cropBase.h;
   const sx = Math.max(0, (cropBox.x - cropBase.x) * scaleX);
   const sy = Math.max(0, (cropBox.y - cropBase.y) * scaleY);
   const sw = Math.min(iw - sx, cropBox.w * scaleX);
   const sh = Math.min(ih - sy, cropBox.h * scaleY);
+  const outputScale = Math.min(1, 900 / Math.max(sw, sh));
+  canvas.width = Math.max(1, Math.round(sw * outputScale));
+  canvas.height = Math.max(1, Math.round(sh * outputScale));
+  const ctx = canvas.getContext('2d');
 
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
   const result = canvas.toDataURL('image/jpeg', 0.88);
   jokerDraft[cropTarget.jokerIndex].img = result;
   closeModal('modal-crop');
@@ -3919,6 +3941,11 @@ function haptic(pattern=[50]) {
 }
 
 function showRandomEvent() {
+  if (!canShowRandomEvent()) {
+    pendingNextGame = false;
+    _doNextGame();
+    return;
+  }
   const all = getAllEvents();
   const ev = all[Math.floor(Math.random()*all.length)];
   document.getElementById('event-icon').textContent = ev.icon;
@@ -4021,7 +4048,8 @@ let pendingNextGame = false;
 function nextGameAfterEvent() {
   if (pendingNextGame) {
     pendingNextGame = false;
-    _doNextGame();
+    if (canShowRandomEvent()) _doNextGame();
+    else showEndScreen();
   }
 }
 
@@ -4942,6 +4970,47 @@ window.smMobileCloseJokerOverlay = function smMobileCloseJokerOverlay() {
   }
 };
 
+function smMobileRenderEndScreen(data, playerName) {
+  const players = data.players || [];
+  const scores = data.scores || {};
+  const sorted = players.length
+    ? players.map(p => ({name:p.name, pts:scores[p.name] || 0})).sort((a,b)=>b.pts-a.pts)
+    : Object.entries(scores).map(([name,pts])=>({name, pts:pts || 0})).sort((a,b)=>b.pts-a.pts);
+  const meIdx = Math.max(0, sorted.findIndex(p => p.name === playerName));
+  const me = sorted[meIdx] || {name:playerName, pts:scores[playerName] || 0};
+  const rank = meIdx + 1;
+  const winner = sorted[0] || me;
+  const won = rank === 1;
+  const goal = data.secretGoals?.[playerName];
+  const goalDone = !!data.goalAchieved?.[playerName];
+  const medals = ['🏆','🥈','🥉'];
+
+  return `
+    <div style="background:${won?'linear-gradient(160deg,#332a05,#18182a)':'#1a1a2e'};border:2px solid ${won?'#ffd700':'rgba(255,255,255,.12)'};border-radius:18px;padding:18px;margin-bottom:12px;text-align:center">
+      <div style="font-size:3.4rem;margin-bottom:8px">${won?'🏆':'🎮'}</div>
+      <div style="font-size:.72rem;color:${won?'#ffd700':'#aaa'};text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Marathon beendet</div>
+      <div style="font-size:1.35rem;font-weight:900;margin-bottom:6px">${won?'Glueckwunsch, du hast gewonnen!':'Endergebnis'}</div>
+      <div style="font-size:.92rem;color:#aaa;line-height:1.5">
+        Platz <strong style="color:#ffd700">${rank}</strong> mit <strong style="color:#ffd700">${me.pts}</strong> Punkten
+      </div>
+      <div style="font-size:.82rem;color:#888;margin-top:8px">Gewinner: <strong style="color:#ffd700">${smMobileEsc(winner.name)}</strong></div>
+    </div>
+    <div style="background:#1a1a2e;border-radius:14px;padding:14px;margin-bottom:12px">
+      <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Rangliste</div>
+      ${sorted.map((p,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+        <span style="width:28px;font-size:1.2rem;text-align:center">${medals[i] || '#'+(i+1)}</span>
+        <span style="flex:1;font-weight:${p.name===playerName?'900':'600'};color:${p.name===playerName?'#ffd700':'#e0e0e0'}">${smMobileEsc(p.name)}${p.name===playerName?' 👈':''}</span>
+        <span style="font-weight:900">${p.pts}</span>
+      </div>`).join('')}
+    </div>
+    ${goal ? `<div style="background:${goalDone?'#0d2a1a':'#2a1518'};border:2px solid ${goalDone?'#4ecdc4':'#e94560'};border-radius:14px;padding:14px">
+      <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Dein Geheimziel</div>
+      <div style="font-size:2rem;margin-bottom:8px">${smMobileEsc(goal.icon || '🎯')}</div>
+      <div style="font-size:.88rem;line-height:1.6;white-space:pre-line;margin-bottom:8px">${smMobileEsc(goal.text || '')}</div>
+      <div style="font-size:.85rem;font-weight:900;color:${goalDone?'#4ecdc4':'#e94560'}">${goalDone?'Erfuellt!':'Nicht erfuellt'}</div>
+    </div>` : ''}`;
+}
+
 // Start now prepares a private phone-based joker-pick phase when Firebase works.
 window.startMarathon = function startMarathon() {
   if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
@@ -4968,6 +5037,7 @@ window.startMarathon = function startMarathon() {
   state.giftedJokers = {};
   state.goalAchieved = {};
   state._marathonStarted = false;
+  state._marathonFinished = false;
   state._setupPhase = 'jokerPick';
   state._vetoFromEndScreen = false;
   state.currentIdx = -1;
@@ -5066,8 +5136,9 @@ window.fbPushState = function fbPushState() {
     goalAchieved: state.goalAchieved,
     activeJokers: state.activeJokers,
     games: cleanGames,
-    phase: state._setupPhase || (state._marathonStarted ? 'marathon' : 'setup'),
+    phase: state._marathonFinished ? 'finished' : (state._setupPhase || (state._marathonStarted ? 'marathon' : 'setup')),
     marathonStarted: !!state._marathonStarted,
+    marathonFinished: !!state._marathonFinished,
     ts: Date.now(),
     hostAlive: true,
   };
@@ -5157,6 +5228,11 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     const players = data.players || [];
     if (!players.find(p => p.name === playerName)) {
       c.innerHTML = `<div style="text-align:center;padding:40px 20px;color:#e94560;font-weight:700">Dieser Spieler gehört nicht zu dieser Session.</div>`;
+      return;
+    }
+
+    if (data.marathonFinished === true || data.phase === 'finished') {
+      c.innerHTML = smMobileRenderEndScreen(data, playerName);
       return;
     }
 
