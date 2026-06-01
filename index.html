@@ -5086,5 +5086,178 @@ document.addEventListener('sm-mobile-local-refresh', e => {
 </div>
 </div>
 
+
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  V38: Private Joker + private secret goals on phones
+// ═══════════════════════════════════════════════════════════
+(function(){
+  // Top bar no longer leaks joker identities. The host only sees players/status.
+  window.renderJokerStatusBar = function renderJokerStatusBar() {
+    const bar = document.getElementById('joker-status-bar');
+    if (!bar) return;
+    if (!state.players?.length) { bar.innerHTML = ''; return; }
+    bar.innerHTML = `
+      <div class="joker-bar" style="justify-content:space-between;align-items:center">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          ${state.players.map(p => {
+            const goalDone = !!(state.goalAchieved?.[p.name]);
+            return `<span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}${goalDone ? ' ✅' : ''}</span>`;
+          }).join('')}
+        </div>
+        <div style="font-size:.78rem;color:var(--muted);white-space:nowrap">🔒 Joker &amp; Geheimziele privat auf den Handys</div>
+      </div>`;
+  };
+
+  // Main Joker tab no longer shows anyone's chosen cards.
+  window.renderJokerArea = function renderJokerArea() {
+    const c = document.getElementById('joker-area');
+    if (!c) return;
+    c.innerHTML = `
+      <div class="card" style="border:2px solid rgba(78,205,196,.25)">
+        <div class="card-title">🔒 Private Joker</div>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;margin-bottom:14px">
+          Die gewählten Joker sind geheim und werden nur auf dem jeweiligen Handy angezeigt. Auf dem Hauptgerät werden keine Joker-Karten mehr angezeigt, damit niemand die Taktik der anderen sieht.
+        </p>
+        <div class="grid-2" style="gap:10px;margin-bottom:14px">
+          ${state.players.map(p => {
+            const jokers = state.jokers?.[p.name] || [];
+            const used = jokers.filter(j => j.used).length;
+            const total = jokers.length || 3;
+            return `<div style="background:var(--surface);border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px">
+              <span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}</span>
+              <span style="margin-left:auto;font-size:.78rem;color:var(--muted)">${used}/${total} genutzt</span>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-gold" onclick="openPlayerQRModal()">📱 Spieler-QR anzeigen</button>
+          <button class="btn btn-secondary" onclick="fbPushState && fbPushState();showToast('Handy-Ansichten aktualisiert ✓')">🔄 Handys aktualisieren</button>
+        </div>
+        <p style="font-size:.75rem;color:var(--muted);margin-top:12px;line-height:1.5">
+          Wenn jemand einen Joker nutzen möchte, klickt er auf dem Handy auf „Einsetzen“. Am Hauptgerät erscheint dann die Bestätigung.
+        </p>
+      </div>`;
+  };
+
+  function smAssignSecretGoalsSilently() {
+    state.secretGoals = {};
+    state.secretGoalExtras = {};
+
+    const ffaCount = state.plan.filter(e => {
+      const g = state.games.find(g => g.id === e.gameId);
+      return g?.type === 'ffa';
+    }).length;
+    const silverTarget = getSilverTarget(ffaCount);
+
+    const coopCount = state.plan.filter(e => {
+      const g = state.games.find(g => g.id === e.gameId);
+      return g?.type === 'coop';
+    }).length;
+
+    const available = SECRET_GOALS.filter(g => {
+      if (g.id === 'sg_silber' && ffaCount < 3) return false;
+      if (g.id === 'sg_koop' && coopCount === 0) return false;
+      if (g.id === 'sg_riese' && state.plan.length < 4) return false;
+      return true;
+    });
+
+    const shuffledGoals = shuffle([...available]);
+    state.players.forEach((p, i) => {
+      const goal = shuffledGoals[i % shuffledGoals.length];
+      let displayText = goal.text;
+      let extra = {};
+
+      if (goal.id === 'sg_silber') {
+        displayText = `Beende mindestens ${silverTarget}x auf exakt Platz 2 in Jeder-gegen-Jeden-Spielen (Team- & Koop-Spiele zählen nicht). Heute sind ${ffaCount} Jeder-gegen-Jeden-Spiele geplant.`;
+        extra.silverTarget = silverTarget;
+      }
+      if (goal.id === 'sg_joker_meister') {
+        const picks = state.jokerPicks[p.name] || [];
+        const rules = picks.map(id => `• ${getJokerMeisterRule(id)}`).join('\n');
+        displayText = `Setze beide gewählten Joker sinnvoll ein:\n\n${rules}`;
+        extra.jokerResults = {};
+      }
+      if (goal.id === 'sg_schnitt') {
+        displayText = `Dein Durchschnitt pro Spiel liegt am Ende über 3 Punkten. (Wird am Ende angezeigt)`;
+      }
+
+      state.secretGoals[p.name] = {...goal, text: displayText};
+      state.secretGoalExtras[p.name] = extra;
+    });
+  }
+
+  function smBuildJokersFromPrivatePicks() {
+    state._vetoPenaltyApplied = state._vetoPenaltyApplied || {};
+    state.players.forEach(p => {
+      const picks = state.jokerPicks[p.name] || [];
+      state.jokers[p.name] = [...picks.map(id => ({id, used:false})), {id:'skip', used:false}];
+      if (picks.includes('veto') && !state._vetoPenaltyApplied[p.name]) {
+        state.scores[p.name] = (state.scores[p.name] || 0) - 3;
+        state._vetoPenaltyApplied[p.name] = true;
+      }
+    });
+  }
+
+  // After private joker pick, secret goals are sent to the phones instead of being shown on the host screen.
+  window.startSecretGoals = function startSecretGoals() {
+    const missing = state.players.filter(p => (state.jokerPicks[p.name] || []).length < 2);
+    if (missing.length) {
+      showToast(`${missing.map(p => p.name).join(', ')} müssen noch 2 Joker wählen!`);
+      return;
+    }
+
+    smBuildJokersFromPrivatePicks();
+    smAssignSecretGoalsSilently();
+    state._setupPhase = 'secretGoals';
+    state._marathonStarted = false;
+
+    showScreen('screen-joker-pick');
+    const c = document.getElementById('joker-pick-players');
+    if (c) {
+      c.innerHTML = `
+        <div class="card" style="border:2px solid rgba(255,215,0,.35);text-align:center;max-width:720px;margin:0 auto 16px">
+          <div style="font-size:3rem;margin-bottom:8px">🎯</div>
+          <div class="card-title" style="justify-content:center">Geheimziele sind auf den Handys</div>
+          <p style="font-size:.9rem;color:var(--muted);line-height:1.6;margin-bottom:14px">
+            Jeder Spieler sieht sein Geheimziel jetzt nur auf seinem eigenen Handy. Auf dem Hauptgerät wird es nicht mehr angezeigt.
+          </p>
+          <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:14px">
+            <button class="btn btn-gold" onclick="openPlayerQRModal()">📱 Spieler-QR anzeigen</button>
+            <button class="btn btn-secondary" onclick="fbPushState && fbPushState();showToast('Geheimziele an Handys gesendet ✓')">🔄 An Handys senden</button>
+          </div>
+          <button class="btn btn-primary" style="padding:14px 42px;font-size:1rem;border-radius:12px" onclick="smStartMarathonAfterPrivateGoals()">
+            🚀 Marathon starten
+          </button>
+        </div>
+        <div class="grid-2" style="gap:12px;max-width:720px;margin:0 auto">
+          ${state.players.map(p => `<div class="card" style="padding:14px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}</span>
+              <span style="margin-left:auto;color:var(--green);font-weight:800">📱 Ziel bereit</span>
+            </div>
+          </div>`).join('')}
+        </div>`;
+    }
+    if (fbIsHost) fbPushState();
+  };
+
+  window.smStartMarathonAfterPrivateGoals = function smStartMarathonAfterPrivateGoals() {
+    state._setupPhase = 'marathon';
+    if (fbIsHost) fbPushState();
+    _finishSetupAndStart();
+  };
+
+  const oldFinish = window._finishSetupAndStart;
+  if (typeof oldFinish === 'function') {
+    window._finishSetupAndStart = function _finishSetupAndStart() {
+      state._setupPhase = 'marathon';
+      return oldFinish.apply(this, arguments);
+    };
+  }
+})();
+</script>
+
 </body>
 </html>
