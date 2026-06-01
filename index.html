@@ -1138,7 +1138,7 @@ function showScreen(id) {
 }
 
 function resetMarathonRuntime(options = {}) {
-  const { disconnectFirebase = true, keepLibrary = true } = options;
+  const { disconnectFirebase = true, clearAutosave = false } = options;
 
   // Online-/Handy-Session sauber beenden, damit ein neuer Marathon frische QR-Codes bekommt.
   if (disconnectFirebase && typeof fbDisconnect === 'function' && typeof fbSessionId !== 'undefined' && fbSessionId) {
@@ -1146,6 +1146,7 @@ function resetMarathonRuntime(options = {}) {
   }
 
   state.plan = [];
+  state.previewOrder = [];
   state.currentIdx = -1;
   state.scores = {};
   state.history = [];
@@ -1173,7 +1174,26 @@ function resetMarathonRuntime(options = {}) {
   if (ms && window._marathonScreenHTML) ms.innerHTML = window._marathonScreenHTML;
 
   document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  if (clearAutosave) {
+    const sessions = getSessions();
+    if (sessions.__autosave__) {
+      delete sessions.__autosave__;
+      setSessions(sessions);
+    }
+  }
+  saveLS();
   renderAll();
+  renderPlayerSetup();
+  renderPlanPreview();
+  renderSavedSessions();
+}
+
+function discardCurrentMarathonAndShowHome() {
+  resetMarathonRuntime({ disconnectFirebase: true, clearAutosave: true });
+  document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  const homeSaveName = document.getElementById('home-save-name');
+  if (homeSaveName) homeSaveName.value = '';
+  showScreen('screen-home');
   renderPlayerSetup();
   renderPlanPreview();
   renderSavedSessions();
@@ -1260,8 +1280,7 @@ function endMarathonAndGoHome() {
     'Marathon endgültig beenden?',
     'Der aktuelle Marathon wird gelöscht und nicht gespeichert. Deine Spielebibliothek und bereits gespeicherte Sessions bleiben erhalten.',
     () => {
-      resetMarathonRuntime({ disconnectFirebase: true });
-      showScreen('screen-home');
+      discardCurrentMarathonAndShowHome();
       showToast('Marathon beendet und gelöscht – neuer Start ist bereit.');
     }
   );
@@ -4578,6 +4597,10 @@ function renderMobilePlayerView(sessionId, playerName) {
       </div>
     </div>`;
 
+  if (!document.getElementById('mobile-joker-overlay')) {
+    document.body.insertAdjacentHTML('beforeend', `<div id="mobile-joker-overlay" onclick="smMobileCloseJokerOverlay()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.86);align-items:center;justify-content:center;padding:14px"></div>`);
+  }
+
   const ref = firebase.database().ref(`sessions/${sessionId}`);
   ref.on('value', snap => {
     const data = snap.val();
@@ -4652,7 +4675,7 @@ function renderMobilePlayerView(sessionId, playerName) {
         <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">🃏 Deine Joker</div>
         ${myJokers.length ? myJokers.map(j=>{
           const jd = JDEFS.find(x=>x.id===j.id)||{icon:'🃏',name:j.id,desc:''};
-          return `<div style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'}">
+          return `<div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'};cursor:pointer">
             <span style="font-size:1.8rem">${jd.icon}</span>
             <div style="flex:1;min-width:0">
               <div style="font-weight:700;font-size:.88rem">${jd.name}</div>
@@ -4737,9 +4760,43 @@ function smGetJokerDefsForSync() {
 function smJokerVisualHtml(jd, size='2.1rem') {
   if (!jd) return '🃏';
   return jd.img
-    ? `<img src="${smMobileEsc(jd.img)}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.style.display='none';this.parentElement.textContent='${smMobileEsc(jd.icon||'🃏')}'">`
+    ? `<img src="${smMobileEsc(jd.img)}" style="width:100%;height:100%;object-fit:contain;position:absolute;inset:0;padding:4px" onerror="this.style.display='none';this.parentElement.textContent='${smMobileEsc(jd.icon||'🃏')}'">`
     : `<span style="font-size:${size}">${smMobileEsc(jd.icon || '🃏')}</span>`;
 }
+
+window.smMobileOpenJokerOverlay = function smMobileOpenJokerOverlay(jokerId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const defs = window._smMobileJokerDefs || [];
+  const jd = defs.find(j => j.id === jokerId) || {id:jokerId, icon:'🃏', name:jokerId, desc:''};
+  const overlay = document.getElementById('mobile-joker-overlay');
+  if (!overlay) return;
+  const visual = jd.img
+    ? `<img src="${smMobileEsc(jd.img)}" alt="${smMobileEsc(jd.name)}" style="display:block;width:100%;height:100%;object-fit:contain">`
+    : `<div style="font-size:min(34vw,9rem);line-height:1;text-align:center">${smMobileEsc(jd.icon || '🃏')}</div>`;
+  overlay.innerHTML = `
+    <div onclick="event.stopPropagation()" style="width:min(94vw,520px);max-height:92vh;overflow:auto;background:#111124;border:1px solid rgba(255,255,255,.14);border-radius:18px;box-shadow:0 18px 60px rgba(0,0,0,.65);padding:14px">
+      <div style="background:#f6f6fb;border-radius:14px;min-height:58vh;max-height:68vh;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#111">
+        ${visual}
+      </div>
+      <div style="padding:14px 4px 4px">
+        <div style="font-size:1.15rem;font-weight:900;color:#ffd700;margin-bottom:6px">${smMobileEsc(jd.name)}</div>
+        <div style="font-size:.9rem;line-height:1.55;color:#c8c8d8">${smMobileEsc(jd.desc)}</div>
+      </div>
+      <button onclick="smMobileCloseJokerOverlay()" style="width:100%;border:none;border-radius:12px;background:#2a2a42;color:#e0e0e0;padding:13px;font-weight:900;font-size:.95rem;margin-top:12px">Schliessen</button>
+    </div>`;
+  overlay.style.display = 'flex';
+};
+
+window.smMobileCloseJokerOverlay = function smMobileCloseJokerOverlay() {
+  const overlay = document.getElementById('mobile-joker-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.innerHTML = '';
+  }
+};
 
 // Start now prepares a private phone-based joker-pick phase when Firebase works.
 window.startMarathon = function startMarathon() {
@@ -4937,6 +4994,10 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       <div id="mobile-content"><div style="text-align:center;padding:60px 20px;color:#888">⏳ Verbinde...</div></div>
     </div>`;
 
+  if (!document.getElementById('mobile-joker-overlay')) {
+    document.body.insertAdjacentHTML('beforeend', `<div id="mobile-joker-overlay" onclick="smMobileCloseJokerOverlay()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.86);align-items:center;justify-content:center;padding:14px"></div>`);
+  }
+
   const ref = firebase.database().ref(`sessions/${sessionId}`);
   ref.on('value', snap => {
     const data = snap.val();
@@ -4953,6 +5014,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     }
 
     const defs = data.jokerDefs || smGetJokerDefsForSync();
+    window._smMobileJokerDefs = defs;
     const pickDefs = defs.filter(j => j.id !== 'skip');
     const savedPicks = data.jokerPicks?.[playerName] || [];
     if (!window._mobilePicks) window._mobilePicks = {};
@@ -4971,10 +5033,11 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
           ${pickDefs.map(j => {
             const selected = currentPicks.includes(j.id);
             const disabled = !selected && currentPicks.length >= 2;
-            return `<button onclick="smMobileToggleJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" ${disabled?'disabled':''}
+            return `<button onclick="smMobileToggleJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')"
               style="position:relative;min-height:196px;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:0;overflow:hidden;opacity:${disabled?.45:1};text-align:left">
-              <div style="height:126px;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;color:#111;font-size:2rem">
+              <div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="height:126px;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;color:#111;font-size:2rem">
                 ${smJokerVisualHtml(j)}
+                <div style="position:absolute;left:8px;top:8px;background:rgba(17,17,17,.72);color:#fff;border-radius:999px;padding:4px 8px;font-size:.68rem;font-weight:900">Ansehen</div>
                 ${selected?'<div style="position:absolute;right:8px;top:8px;background:#ffd700;color:#111;border-radius:999px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:900">✓</div>':''}
               </div>
               <div style="padding:9px">
@@ -5027,10 +5090,10 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">🃏 Deine Joker</div>
         ${myJokers.length ? myJokers.map(j=>{
           const jd = defs.find(x=>x.id===j.id)||{icon:'🃏',name:j.id,desc:''};
-          return `<div style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'}">
+          return `<div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'};cursor:pointer">
             <span style="width:44px;height:58px;border-radius:8px;overflow:hidden;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;color:#111">${smJokerVisualHtml(jd,'1.6rem')}</span>
             <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.88rem">${smMobileEsc(jd.name)}</div><div style="font-size:.72rem;color:#888;margin-top:2px">${j.used?'✓ Bereits genutzt':smMobileEsc(jd.desc)}</div></div>
-            ${(!j.used && j.id !== 'underdog' && canUseJokers) ? `<button onclick="fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>` : (!j.used && j.id !== 'underdog' && !canUseJokers) ? `<span style="font-size:.7rem;color:#888;flex-shrink:0;text-align:right">Erst nach<br>Start</span>` : j.id==='underdog' ? `<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>` : ''}
+            ${(!j.used && j.id !== 'underdog' && canUseJokers) ? `<button onclick="event.stopPropagation();fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>` : (!j.used && j.id !== 'underdog' && !canUseJokers) ? `<span style="font-size:.7rem;color:#888;flex-shrink:0;text-align:right">Erst nach<br>Start</span>` : j.id==='underdog' ? `<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>` : ''}
           </div>`;
         }).join('') : '<div style="color:#888;font-size:.85rem;text-align:center;padding:12px">Warte auf Start...</div>'}
       </div>
