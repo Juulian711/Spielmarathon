@@ -1154,6 +1154,7 @@ function resetMarathonRuntime(options = {}) {
   state.skipped = [];
   state.secretGoals = {};
   state.secretGoalExtras = {};
+  state._secretGoalsAssigned = false;
   state.comebackGiven = {};
   state.giftedJokers = {};
   state.goalAchieved = {};
@@ -4672,10 +4673,18 @@ function renderMobilePlayerView(sessionId, playerName) {
 
 function fbGuestRequestJoker(sessionId, playerName, jokerId) {
   if (!fbInit()) return;
-  firebase.database().ref(`sessions/${sessionId}/guestActions`).push({
-    type:'useJoker', playerName, jokerId, ts:Date.now()
-  });
-  showToast('📱 Joker-Anfrage gesendet!');
+  const ref = firebase.database().ref(`sessions/${sessionId}`);
+  ref.once('value').then(snap => {
+    const data = snap.val();
+    if (!data || data.marathonStarted !== true || data.phase !== 'marathon') {
+      showToast('Joker erst nach Marathonstart möglich!');
+      return;
+    }
+    ref.child('guestActions').push({
+      type:'useJoker', playerName, jokerId, ts:Date.now()
+    });
+    showToast('📱 Joker-Anfrage gesendet!');
+  }).catch(() => showToast('Joker-Anfrage konnte nicht gesendet werden.'));
 }
 
 // Generate mobile player QR URLs
@@ -4753,6 +4762,7 @@ window.startMarathon = function startMarathon() {
   state.skipped = [];
   state.secretGoals = {};
   state.secretGoalExtras = {};
+  state._secretGoalsAssigned = false;
   state.comebackGiven = {};
   state.giftedJokers = {};
   state.goalAchieved = {};
@@ -5347,14 +5357,25 @@ document.addEventListener('sm-mobile-local-refresh', e => {
 
     smV39CloseSecretGoalHostModals();
     smV39BuildJokersFromPrivatePicks();
-    smV39AssignSecretGoalsSilently();
+    if (!state._secretGoalsAssigned || Object.keys(state.secretGoals || {}).length < state.players.length) {
+      smV39AssignSecretGoalsSilently();
+      state._secretGoalsAssigned = true;
+    }
 
-    // Wichtig: _finishSetupAndStart() setzt _marathonStarted selbst auf true.
-    // In v39 wurde es vorher auf true gesetzt, dadurch hat der Guard dort sofort abgebrochen.
+    // Wichtig: _finishSetupAndStart() hat einen Guard auf _marathonStarted.
+    // Falls ein vorheriger Klick/Override den Flag schon gesetzt hat, aber noch kein
+    // Spiel gestartet wurde, wird der Flag hier bewusst freigegeben.
     state._setupPhase = 'marathon';
-    state._marathonStarted = false;
+    if (state.currentIdx < 0) state._marathonStarted = false;
 
     _finishSetupAndStart();
+
+    // Defensive Absicherung: Der Host muss nach dem Klick wirklich im Marathon landen.
+    state._setupPhase = 'marathon';
+    state._marathonStarted = true;
+    if (state.currentIdx < 0 && state.plan && state.plan.length) nextGame();
+    showScreen('screen-marathon');
+    renderAll();
 
     if (typeof fbPushState === 'function' && fbIsHost) {
       fbPushState();
