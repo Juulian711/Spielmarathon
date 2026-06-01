@@ -214,6 +214,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .joker-card.joker-skip .joker-use-btn{background:var(--green);color:#111}
 
 /* JOKER STATUS BAR */
+@keyframes scoreFlash{0%{background:transparent}40%{background:rgba(233,69,96,.4);transform:scale(1.03)}100%{background:transparent;transform:scale(1)}}
+.score-row-flash{animation:scoreFlash .9s ease forwards}
 .joker-bar{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
 .joker-bar-player{display:flex;align-items:center;gap:6px;padding:4px 10px;background:var(--surface);border-radius:8px;border:1px solid rgba(255,255,255,.06)}
 .joker-bar-name{font-size:.75rem;font-weight:700;margin-right:4px}
@@ -278,6 +280,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 /* Crop and lightbox modals must appear above settings (z-index 1000) */
 #modal-crop{z-index:2000}
 #modal-joker-lightbox{z-index:2000}
+/* Confirm dialog always on top */
+#modal-confirm{z-index:3000}
+/* Veto modals must never be dismissible by clicking outside */
+#modal-veto-slot{z-index:2500}
+#modal-veto-anim{z-index:2500}
+#modal-veto-pick{z-index:2500}
 .modal{background:var(--card);border-radius:var(--radius);padding:24px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow);border:1px solid rgba(255,255,255,.08);transform:scale(.96);transition:transform .2s}
 .modal-overlay.open .modal{transform:scale(1)}
 .modal h3{font-size:1.05rem;margin-bottom:16px;color:var(--gold)}
@@ -577,11 +585,24 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
       <input type="text" id="mg-dev" placeholder="z.B. Kosmos"/>
     </div>
     <div class="form-group">
-      <label>Dauer (Min.) *</label>
-      <input type="number" id="mg-dur" placeholder="45" min="1" max="600"/>
+      <label>Spieltyp</label>
+      <select id="mg-type" onchange="onGameTypeChange()">
+        <option value="ffa">Jeder gegen Jeden</option>
+        <option value="2v2">Team vs Team</option>
+        <option value="3v1">1 gegen Alle</option>
+        <option value="coop">Kooperativ</option>
+      </select>
     </div>
   </div>
   <div class="form-row">
+    <div class="form-group">
+      <label>Mindestdauer</label>
+      <input type="number" id="mg-min-dur" placeholder="z.B. 20" min="1" max="600"/>
+    </div>
+    <div class="form-group">
+      <label>Maximaldauer *</label>
+      <input type="number" id="mg-dur" placeholder="z.B. 40" min="1" max="600"/>
+    </div>
     <div class="form-group">
       <label>Min. Spieler</label>
       <input type="number" id="mg-min" value="2" min="1" max="10"/>
@@ -590,15 +611,6 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
       <label>Max. Spieler</label>
       <input type="number" id="mg-max" value="4" min="1" max="10"/>
     </div>
-  </div>
-  <div class="form-group">
-    <label>Spieltyp</label>
-    <select id="mg-type" onchange="onGameTypeChange()">
-      <option value="ffa">Jeder gegen Jeden</option>
-      <option value="2v2">Team vs Team</option>
-      <option value="3v1">1 gegen Alle</option>
-      <option value="coop">Kooperativ</option>
-    </select>
   </div>
   <div class="form-group">
     <label>Cover-Bild</label>
@@ -615,21 +627,21 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   <div class="form-group" id="mg-coop-bonus-wrap" style="display:none">
     <label>Anzahl Sonderregel-Slots (Koop) <span style="color:var(--gold)">— jede erfüllte Regel = +1 Punkt</span></label>
     <input type="number" id="mg-coop-slots" value="3" min="1" max="10" placeholder="3"/>
-    <p style="font-size:.75rem;color:var(--muted);margin-top:4px">Bei Koop-Spielen kann jeder Spieler unabhängig Sonderregeln erfüllen und so Punkte sammeln.</p>
   </div>
-  <div class="form-group">
-    <label>Siegbedingung</label>
-    <select id="mg-win-condition">
-      <option value="all">Alle spielen bis zum Ende (Standardmäßig)</option>
-      <option value="first">Spiel endet, wenn einer gewonnen hat</option>
-    </select>
-  </div>
-  <div class="form-group">
-    <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-      <input type="checkbox" id="mg-ties-allowed" style="width:16px;height:16px;accent-color:var(--accent)"/>
-      <span>Gleiche Platzierung erlaubt (mehrere Spieler auf Platz 1 möglich)</span>
-    </label>
-    <p style="font-size:.75rem;color:var(--muted);margin-top:4px">Alle Spieler auf demselben Platz erhalten identische Punkte.</p>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Siegbedingung</label>
+      <select id="mg-win-condition">
+        <option value="all">Alle spielen bis zum Ende</option>
+        <option value="first">Spiel endet, wenn einer gewonnen hat</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:22px">
+        <input type="checkbox" id="mg-ties-allowed" style="width:16px;height:16px;accent-color:var(--accent)"/>
+        <span>Gleiche Plätze erlaubt</span>
+      </label>
+    </div>
   </div>
   <div class="form-group">
     <label>Sonderregeln (min. 1 für +1 Extrapunkt)</label>
@@ -649,16 +661,36 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 <!-- Save Session -->
 <div class="modal-overlay" id="modal-save">
 <div class="modal">
-  <h3>💾 Session speichern</h3>
+  <h3>💾 Session / Turnier speichern</h3>
   <div class="form-group">
-    <label>Name für diesen Spielabend</label>
-    <input type="text" id="save-name" placeholder="z.B. Familienabend Weihnachten 2025"/>
+    <label>🏆 Name für diesen Spielabend</label>
+    <input type="text" id="save-name" placeholder="z.B. Familienabend Weihnachten 2025" style="font-size:1rem;font-weight:600"/>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:4px">Dieser Name erscheint im Turnier-Archiv.</p>
   </div>
   <p style="font-size:.82rem;color:var(--muted);line-height:1.5">Der aktuelle Fortschritt (Punkte, Plan, Joker) wird gespeichert und kann später fortgesetzt oder als Turnierergebnis angesehen werden.</p>
   <div class="modal-actions">
     <button class="btn btn-ghost" onclick="closeModal('modal-save')">Abbrechen</button>
     <button class="btn btn-green" onclick="saveSession(false)">💾 Speichern (fortsetzen)</button>
     <button class="btn btn-gold" onclick="saveSession(true)">🏆 Als Turnier abschließen</button>
+  </div>
+</div>
+</div>
+
+<!-- Home / Leave Marathon -->
+<div class="modal-overlay" id="modal-home-choice">
+<div class="modal" style="max-width:520px">
+  <h3>🏠 Zum Home-Menü?</h3>
+  <p style="font-size:.88rem;color:var(--muted);line-height:1.55;margin-bottom:14px">
+    Was soll mit dem aktuellen Marathon passieren? Du kannst ihn zwischenspeichern und später fortsetzen – oder komplett beenden. Beim Beenden wird nur der laufende Marathon gelöscht, nicht deine Spielebibliothek.
+  </p>
+  <div class="form-group">
+    <label>Name für die Zwischenspeicherung</label>
+    <input type="text" id="home-save-name" placeholder="z.B. Spielabend Samstag" style="font-size:1rem;font-weight:600"/>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+    <button class="btn btn-green" onclick="saveAndGoHome()" style="width:100%;justify-content:center">💾 Zwischenspeichern & Home</button>
+    <button class="btn btn-danger" onclick="endMarathonAndGoHome()" style="width:100%;justify-content:center">🗑️ Marathon komplett beenden & löschen</button>
+    <button class="btn btn-ghost" onclick="closeModal('modal-home-choice')" style="width:100%;justify-content:center">Abbrechen</button>
   </div>
 </div>
 </div>
@@ -801,6 +833,21 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 </div>
 </div>
 
+<!-- Veto Slot Machine Modal -->
+<div class="modal-overlay" id="modal-veto-slot">
+<div class="modal" style="max-width:420px">
+  <div id="veto-slot-content"></div>
+</div>
+</div>
+
+<!-- Veto Animation Modal -->
+<div class="modal-overlay" id="modal-veto-anim">
+<div class="modal" style="max-width:420px">
+  <div id="veto-anim-content"></div>
+  <button class="btn btn-primary" id="veto-anim-ok" style="width:100%;margin-top:14px;display:none" onclick="closeVetoAnim()">✅ Weiter</button>
+</div>
+</div>
+
 <!-- Veto Game Picker Modal -->
 <div class="modal-overlay" id="modal-veto-pick">
 <div class="modal" style="max-width:520px">
@@ -921,6 +968,9 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
     <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px;line-height:1.5">
       Basispunkte für <strong>4 Spieler</strong>. Bei mehr Spielern skaliert Platz 1 automatisch hoch (×n/4).
     </p>
+    <div style="background:rgba(78,205,196,.08);border:1px solid rgba(78,205,196,.25);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.82rem;line-height:1.5">
+      <strong style="color:var(--green)">Teamspiele:</strong> Der Typ „Team vs Team“ teilt automatisch alle Spieler möglichst gleichmäßig in Rot/Blau auf. Gewinner bekommen die Sieg-Punkte, Verlierer die Niederlagen-Punkte. Bei „1 gegen Alle“ bekommt entweder der Solo-Spieler oder das Team den jeweiligen Wert.
+    </div>
     <div style="font-size:.8rem;color:var(--gold);margin-bottom:8px;font-weight:700">JEDER GEGEN JEDEN (Basis: 4 Spieler)</div>
     <div id="ffa-point-settings"></div>
     <hr class="divider"/>
@@ -1024,7 +1074,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 const JOKER_DEFS = [
   {id:'double',  icon:'🎯', name:'Doppelt oder Nichts', desc:'Vor einem Spiel einsetzen. Landest du in der Top-Hälfte → doppelte Punkte! Verlierst du → 0 Punkte.', img:''},
   {id:'revenge', icon:'🔁', name:'Revanche',            desc:'Das zuletzt gespielte Spiel wird sofort wiederholt. Deine alten Punkte bleiben – du kannst noch mehr holen!', img:''},
-  {id:'veto',    icon:'🗳️', name:'Veto',                desc:'Du startest mit -3 Punkten. Dafür darfst du am Ende ein ganzes Spiel aus der Wertung streichen – für alle!', img:''},
+  {id:'veto',    icon:'🗳️', name:'Veto',                desc:'Du startest mit -3 Punkten. Genau ein Spiel vor Schluss darfst du automatisch ein ganzes Spiel aus der Wertung streichen – für alle!', img:''},
   {id:'twist',   icon:'🎭', name:'Rollentausch',         desc:'Bei einem Teamspiel darfst du selbst entscheiden wer in welchem Team spielt!', img:''},
   {id:'underdog',icon:'👑', name:'Underdog-Bonus',       desc:'Automatisch: Wer bei Halbzeit auf dem letzten Platz liegt, bekommt sofort +3 Punkte geschenkt.', img:''},
   {id:'tipster', icon:'🔮', name:'Tipp-Joker',           desc:'Tippe vor dem Spiel wer gewinnt. Richtig getippt → +4 Punkte (JgJ) oder +2 Punkte (Team/1vAll)!', img:''},
@@ -1087,16 +1137,138 @@ function showScreen(id) {
   document.getElementById('btn-qr').style.display = inMarathon ? '' : 'none';
 }
 
+function resetMarathonRuntime(options = {}) {
+  const { disconnectFirebase = true, keepLibrary = true } = options;
+
+  // Online-/Handy-Session sauber beenden, damit ein neuer Marathon frische QR-Codes bekommt.
+  if (disconnectFirebase && typeof fbDisconnect === 'function' && typeof fbSessionId !== 'undefined' && fbSessionId) {
+    try { fbDisconnect(); } catch(e) { console.warn('Firebase reset failed:', e); }
+  }
+
+  state.plan = [];
+  state.currentIdx = -1;
+  state.scores = {};
+  state.history = [];
+  state.jokers = {};
+  state.jokerPicks = {};
+  state.skipped = [];
+  state.secretGoals = {};
+  state.secretGoalExtras = {};
+  state.comebackGiven = {};
+  state.giftedJokers = {};
+  state.goalAchieved = {};
+  state.activeJokers = {};
+  state.startTime = null;
+  state._marathonStarted = false;
+  state._setupPhase = null;
+  state._forceLocalJokerPick = false;
+  state._vetoFromEndScreen = false;
+
+  // Ergebnis-/Joker-Modals und ersetzte Endscreen-HTML zurücksetzen.
+  pendingJokerPlayer = null;
+  pendingJokerId = null;
+  resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
+  const ms = document.getElementById('screen-marathon');
+  if (ms && window._marathonScreenHTML) ms.innerHTML = window._marathonScreenHTML;
+
+  document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  renderAll();
+  renderPlayerSetup();
+  renderPlanPreview();
+  renderSavedSessions();
+}
+
+function hasActiveMarathonRuntime() {
+  return !!(
+    state.plan?.length ||
+    state.currentIdx >= 0 ||
+    Object.keys(state.scores || {}).length ||
+    Object.keys(state.jokers || {}).length ||
+    Object.keys(state.jokerPicks || {}).some(k => (state.jokerPicks[k] || []).length) ||
+    state._setupPhase ||
+    state._marathonStarted ||
+    (typeof fbSessionId !== 'undefined' && fbSessionId)
+  );
+}
+
+function defaultMarathonName() {
+  const d = new Date();
+  return 'Spielabend ' + d.toLocaleDateString('de-DE') + ' ' + d.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+}
+
+function buildSessionSnapshot(name, finalize=false) {
+  return {
+    id: uid(),
+    name,
+    date: new Date().toISOString(),
+    finalized: finalize,
+    players: state.players,
+    scores: state.scores,
+    history: state.history,
+    plan: state.plan,
+    currentIdx: state.currentIdx,
+    jokers: state.jokers,
+    jokerPicks: state.jokerPicks,
+    skipped: state.skipped || [],
+    secretGoals: state.secretGoals || {},
+    secretGoalExtras: state.secretGoalExtras || {},
+    comebackGiven: state.comebackGiven || {},
+    giftedJokers: state.giftedJokers || {},
+    goalAchieved: state.goalAchieved || {},
+    activeJokers: state.activeJokers || {},
+    timeLimit: state.timeLimit,
+    startTime: state.startTime,
+    games: state.games,
+    setupPhase: state._setupPhase || null,
+    marathonStarted: !!state._marathonStarted
+  };
+}
+
+function openHomeChoiceModal() {
+  const inp = document.getElementById('home-save-name');
+  if (inp && !inp.value.trim()) inp.value = defaultMarathonName();
+  openModal('modal-home-choice');
+  setTimeout(() => inp?.focus(), 200);
+}
+
 function goHome() {
+  if (!hasActiveMarathonRuntime()) {
+    showScreen('screen-home');
+    return;
+  }
+  openHomeChoiceModal();
+}
+
+function saveAndGoHome() {
+  const inp = document.getElementById('home-save-name');
+  const name = inp?.value.trim() || defaultMarathonName();
+  const sessions = getSessions();
+  const snapshot = buildSessionSnapshot(name, false);
+  sessions[snapshot.id] = snapshot;
+  setSessions(sessions);
+  closeModal('modal-home-choice');
+  resetMarathonRuntime({ disconnectFirebase: true });
+  showScreen('screen-home');
+  renderSavedSessions();
+  showToast('💾 Marathon zwischengespeichert – du bist im Home-Menü.');
+}
+
+function endMarathonAndGoHome() {
+  closeModal('modal-home-choice');
   showConfirm(
-    '🏠 Zurück zur Startseite?',
-    'Der aktuelle Fortschritt bleibt in LocalStorage. Du kannst ihn über „Gespeicherte Sessions" wieder aufrufen.',
+    'Marathon endgültig beenden?',
+    'Der aktuelle Marathon wird gelöscht und nicht gespeichert. Deine Spielebibliothek und bereits gespeicherte Sessions bleiben erhalten.',
     () => {
-      saveCurrentToLS();
+      resetMarathonRuntime({ disconnectFirebase: true });
       showScreen('screen-home');
-      renderSavedSessions();
+      showToast('Marathon beendet und gelöscht – neuer Start ist bereit.');
     }
   );
+}
+
+// Fallback für ältere Buttons/Verweise im Code.
+function abortMarathon() {
+  endMarathonAndGoHome();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1166,6 +1338,7 @@ function openAddGameModal(editId = null) {
     document.getElementById('mg-name').value = g.name;
     document.getElementById('mg-dev').value  = g.dev || '';
     document.getElementById('mg-dur').value  = g.dur || '';
+    document.getElementById('mg-min-dur').value = g.minDur || '';
     document.getElementById('mg-min').value  = g.minP || 2;
     document.getElementById('mg-max').value  = g.maxP || 4;
     document.getElementById('mg-type').value = g.type;
@@ -1183,6 +1356,7 @@ function openAddGameModal(editId = null) {
     document.getElementById('mg-name').value = '';
     document.getElementById('mg-dev').value  = '';
     document.getElementById('mg-dur').value  = '';
+    document.getElementById('mg-min-dur').value = '';
     document.getElementById('mg-min').value  = 2;
     document.getElementById('mg-max').value  = 4;
     document.getElementById('mg-type').value = 'ffa';
@@ -1248,7 +1422,8 @@ function removeModalRule(i) { modalRules.splice(i,1); renderModalRules(modalRule
 function saveGame() {
   const name = document.getElementById('mg-name').value.trim();
   const dev  = document.getElementById('mg-dev').value.trim();
-  const dur  = parseInt(document.getElementById('mg-dur').value) || 30;
+  const dur     = parseInt(document.getElementById('mg-dur').value) || 30;
+  const minDur  = parseInt(document.getElementById('mg-min-dur').value) || dur;
   const minP = parseInt(document.getElementById('mg-min').value) || 2;
   const maxP = parseInt(document.getElementById('mg-max').value) || 4;
   const type = document.getElementById('mg-type').value;
@@ -1261,9 +1436,9 @@ function saveGame() {
 
   if (state.editGameId) {
     const g = state.games.find(g => g.id === state.editGameId);
-    Object.assign(g, {name, dev, dur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed});
+    Object.assign(g, {name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed});
   } else {
-    state.games.push({id: uid(), name, dev, dur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed});
+    state.games.push({id: uid(), name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed});
   }
   closeModal('modal-add-game');
   renderGameListSetup();
@@ -1283,7 +1458,16 @@ function deleteGame(id) {
 
 function getCompatibleGames() {
   const n = state.players.length;
-  return state.games.filter(g => g.minP <= n && g.maxP >= n);
+  return state.games.filter(g => {
+    if (g.enabled === false) return false; // excluded from marathon
+    return g.minP <= n && g.maxP >= n;
+  });
+}
+
+function getAvgDur(g) {
+  // Use average of min and max duration if both set
+  if (g.minDur && g.minDur !== g.dur) return Math.round((g.minDur + g.dur) / 2);
+  return g.dur || 30;
 }
 
 function updateGameCountBadge() {
@@ -1300,10 +1484,10 @@ function renderGameListSetup() {
 function generateAndShowPlan() {
   const n = state.players.length;
   const compatible = n > 0
-    ? state.games.filter(g => g.minP <= n && g.maxP >= n)
-    : state.games;
+    ? state.games.filter(g => g.enabled !== false && g.minP <= n && g.maxP >= n)
+    : state.games.filter(g => g.enabled !== false);
   if (!compatible.length) {
-    showToast(n > 0 ? 'Keine kompatiblen Spiele für diese Spielerzahl!' : 'Keine Spiele in der Bibliothek!');
+    showToast(n > 0 ? 'Keine aktivierten Spiele für diese Spielerzahl!' : 'Keine aktivierten Spiele in der Bibliothek!');
     return;
   }
   const shuffled = shuffle(compatible);
@@ -1641,6 +1825,10 @@ function startMarathon() {
   const compatible = getCompatibleGames();
   if (!compatible.length) { showToast('Keine kompatiblen Spiele für diese Spielerzahl!'); return; }
 
+  if (typeof fbDisconnect === 'function' && typeof fbSessionId !== 'undefined' && fbSessionId) {
+    try { fbDisconnect(); } catch(e) { console.warn('Could not close old Firebase session:', e); }
+  }
+
   state.timeLimit = parseInt(document.getElementById('time-limit').value) || 0;
   state.startTime = Date.now();
   state.scores    = {};
@@ -1652,8 +1840,16 @@ function startMarathon() {
   state.secretGoals = {};
   state.comebackGiven = {};
   state.goalAchieved = {};
+  state._marathonStarted = false;
+  state._vetoFromEndScreen = false;
   state.currentIdx = -1;
-  state.jokerPicks = {}; // {playerName: [id, id]}
+  state.jokerPicks = {};
+
+  // Restore marathon screen to original tabs layout if it was replaced by end screen
+  const ms = document.getElementById('screen-marathon');
+  if (ms && window._marathonScreenHTML) {
+    ms.innerHTML = window._marathonScreenHTML;
+  }
 
   state.players.forEach(p => {
     state.scores[p.name] = 0;
@@ -1680,14 +1876,25 @@ function renderJokerPickScreen() {
         ${JOKER_DEFS.map(jd => {
           const selected = picks.includes(jd.id);
           const othersFull = !selected && picks.length >= 2;
-          return `<div class="joker-card joker-selectable ${selected?'joker-selected':''} ${othersFull?'joker-used':''}"
-            onclick="${othersFull ? '' : `toggleJokerPick('${esc(p.name)}','${jd.id}')`}">
+          // Veto requires at least playerCount+2 enabled+compatible games
+          const enabledCount = state.previewOrder && state.previewOrder.length
+            ? state.previewOrder.filter(id => {
+                const g = state.games.find(g=>g.id===id);
+                return g && g.enabled!==false;
+              }).length
+            : state.games.filter(g=>g.enabled!==false&&g.minP<=state.players.length&&g.maxP>=state.players.length).length;
+          const vetoDisabled = jd.id==='veto' && enabledCount < state.players.length + 2;
+          const disabled = othersFull || vetoDisabled;
+          const disabledTitle = vetoDisabled ? `Mindestens ${state.players.length+2} Spiele nötig für Veto` : '';
+          return `<div class="joker-card joker-selectable ${selected?'joker-selected':''} ${disabled?'joker-used':''}"
+            onclick="${disabled ? '' : `toggleJokerPick('${esc(p.name)}','${jd.id}')`}"
+            title="${disabledTitle}" style="${vetoDisabled?'opacity:.45;cursor:not-allowed':''}">
             <div class="joker-visual" onclick="openJokerLightbox('${jd.id}',event)" style="cursor:zoom-in" title="Details anzeigen">
               ${jd.img ? `<img src="${esc(jd.img)}" onerror="this.style.display='none'">` : jd.icon}
             </div>
             <div class="joker-footer">
               <div class="joker-name">${jd.name}</div>
-              <div class="joker-desc">${jd.desc}</div>
+              <div class="joker-desc">${vetoDisabled ? '⚠️ Zu wenige Spiele geplant' : jd.desc}</div>
             </div>
           </div>`;
         }).join('')}
@@ -1731,7 +1938,12 @@ function finishJokerPick() {
       {id:'skip', used:false},
     ];
   });
-  showScreen('screen-marathon');
+  if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
+    showScreen('screen-joker-pick');
+    renderJokerPickScreen();
+  } else {
+    showScreen('screen-marathon');
+  }
   document.getElementById('header-sub').textContent =
     `${state.players.map(p=>p.name).join(', ')} · ${state.plan.length} Spiele`;
   nextGame();
@@ -1740,7 +1952,14 @@ function finishJokerPick() {
 }
 
 function _finishSetupAndStart() {
-  showScreen('screen-marathon');
+  if (state._marathonStarted) return; // guard against double-call
+  state._marathonStarted = true;
+  if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
+    showScreen('screen-joker-pick');
+    renderJokerPickScreen();
+  } else {
+    showScreen('screen-marathon');
+  }
   document.getElementById('header-sub').textContent =
     `${state.players.map(p=>p.name).join(', ')} · ${state.plan.length} Spiele`;
   nextGame();
@@ -1758,17 +1977,19 @@ function buildPlan() {
     // Use the exact order from the library preview
     pool = state.previewOrder
       .map(id => state.games.find(g => g.id === id))
-      .filter(Boolean);
-    // Filter for player count compatibility (in case players changed after preview)
+      .filter(Boolean)
+      .filter(g => g.enabled !== false); // respect enabled flag
+    // Filter for player count compatibility
     const n = state.players.length;
     pool = pool.filter(g => g.minP <= n && g.maxP >= n);
   } else {
-    pool = shuffle(getCompatibleGames());
+    pool = shuffle(getCompatibleGames()); // getCompatibleGames already filters enabled
   }
   if (state.timeLimit > 0) {
     let total = 0;
     pool = pool.filter(g => {
-      if (total + g.dur <= state.timeLimit) { total += g.dur; return true; }
+      const avg = getAvgDur(g);
+      if (total + avg <= state.timeLimit) { total += avg; return true; }
       return false;
     });
   }
@@ -1794,8 +2015,11 @@ function reshufflePlan() {
 
 function generateTeams(type) {
   const names = shuffle(state.players.map(p=>p.name));
-  if (type === '2v2' && names.length >= 4) {
-    return {teamA:[names[0],names[1]], teamB:[names[2],names[3]]};
+  if (type === '2v2' && names.length >= 2) {
+    // Team-vs-Team works with any player count: split as evenly as possible.
+    // Bei ungerader Spielerzahl bekommt Team Rot einen Spieler mehr.
+    const split = Math.ceil(names.length / 2);
+    return {teamA:names.slice(0, split), teamB:names.slice(split)};
   }
   if (type === '3v1') {
     const soloIdx = Math.floor(Math.random() * names.length);
@@ -1832,6 +2056,13 @@ function rerollRule() {
 //  GAME FLOW
 // ═══════════════════════════════════════════════════════════
 function nextGame() {
+  // Don't allow advancing if current game hasn't been submitted yet
+  const entry = state.plan[state.currentIdx];
+  if (entry && !entry.done) {
+    showToast('⚠️ Bitte erst das Ergebnis eintragen!');
+    switchTab('tab-current');
+    return;
+  }
   // If there's a random event pending, show it before advancing
   if (state.history.length > 0 && !pendingNextGame && Math.random() < 0.4) {
     pendingNextGame = true;
@@ -1859,7 +2090,7 @@ function updateProgressBar() {
   const total = state.plan.length;
   const done = state.plan.filter(e=>e.done).length;
   const pct = total > 0 ? Math.round((done/total)*100) : 0;
-  const half = Math.floor(total/2);
+  const half = Math.ceil(total/2);
   const label = document.getElementById('progress-label');
   const pctEl = document.getElementById('progress-pct');
   const bar = document.getElementById('progress-fill-bar');
@@ -1881,27 +2112,36 @@ function updateProgressBar() {
 }
 
 function checkUnderdogAuto() {
-  const half = Math.floor(state.plan.length/2);
+  const total = state.plan.length;
   const done = state.plan.filter(e=>e.done).length;
-  if (done !== half) return; // Only exactly at the halfway point
+  // Halfway = after ceiling(total/2) games for odd numbers
+  const half = Math.ceil(total/2);
+  if (done !== half) return;
   if (state.comebackGiven?.underdogGiven) return;
   if (!state.comebackGiven) state.comebackGiven = {};
+
   const sorted = [...state.players].sort((a,b)=>state.scores[a.name]-state.scores[b.name]);
-  const loser = sorted[0];
-  const underdogJoker = state.jokers[loser.name]?.find(j=>j.id==='underdog'&&!j.used);
-  if (!underdogJoker) return;
+  const minScore = state.scores[sorted[0].name];
+  // ALL players tied for last get the bonus
+  const losers = sorted.filter(p => state.scores[p.name] === minScore);
+  const underdogLosers = losers.filter(p => state.jokers[p.name]?.find(j=>j.id==='underdog'&&!j.used));
+  if (!underdogLosers.length) return;
+
   state.comebackGiven.underdogGiven = true;
-  underdogJoker.used = true;
-  state.scores[loser.name] = (state.scores[loser.name]||0) + 3;
-  // Show prominent modal (reuse comeback modal)
+  const names = underdogLosers.map(p => {
+    const j = state.jokers[p.name].find(j=>j.id==='underdog'&&!j.used);
+    j.used = true;
+    state.scores[p.name] = (state.scores[p.name]||0) + 3;
+    return p.name;
+  });
+
   document.getElementById('comeback-msg').textContent =
-    `⚡ Halbzeit! ${loser.name} liegt auf dem letzten Platz und bekommt automatisch +3 Punkte!`;
+    `⚡ Halbzeit! ${names.join(' & ')} ${names.length>1?'liegen':'liegt'} auf dem letzten Platz und ${names.length>1?'bekommen':'bekommt'} automatisch +3 Punkte!`;
   document.getElementById('comeback-joker-display').innerHTML =
-    `<div style="text-align:center;padding:16px;background:linear-gradient(135deg,rgba(255,215,0,.15),rgba(233,69,96,.1));border-radius:12px;border:2px solid var(--gold)">
-      <div style="font-size:3rem">👑</div>
-      <div style="font-weight:800;font-size:1.1rem;color:var(--gold);margin-top:8px">Underdog-Bonus!</div>
-      <div style="font-size:.85rem;color:var(--text);margin-top:6px">+3 Punkte für ${esc(loser.name)}</div>
-    </div>`;
+    '<div style="text-align:center;padding:16px;background:linear-gradient(135deg,rgba(255,215,0,.15),rgba(233,69,96,.1));border-radius:12px;border:2px solid var(--gold)">'
+    + '<div style="font-size:3rem">👑</div>'
+    + '<div style="font-weight:800;font-size:1.1rem;color:var(--gold);margin-top:8px">Underdog-Bonus!</div>'
+    + '<div style="font-size:.85rem;color:var(--text);margin-top:6px">+3 Punkte für ' + esc(names.join(' & ')) + '</div></div>';
   soundComeback();
   haptic([100,50,100,50,200]);
   openModal('modal-comeback');
@@ -2183,7 +2423,10 @@ function submitResult(type) {
   });
 
   Object.entries(pointsMap).forEach(([name,p]) => { state.scores[name] = (state.scores[name]||0) + p; });
-  state.history.push({gameName:g.name, type:g.type, pts:{...pointsMap}, special:specialW});
+  state.history.push({
+    gameName: g.name, type: g.type, pts: {...pointsMap}, special: specialW,
+    isRevanche: !!(entry.isRevanche),
+  });
   entry.done = true;
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
   // Clear result input area immediately so old selections don't show
@@ -2201,6 +2444,7 @@ function submitResult(type) {
   setTimeout(()=>checkSecretGoalsLive(), 400);
   setTimeout(()=>checkComeback(), 800);
   setTimeout(()=>checkUnderdogAuto(), 1200);
+  setTimeout(()=>checkVetoAutoTrigger(), 1600);
   setTimeout(()=>refreshQRIfOpen(), 200);
   updateProgressBar();
 }
@@ -2252,7 +2496,7 @@ function renderJokerArea() {
               <div class="joker-name">${jd.name}</div>
               <div class="joker-desc">${jd.desc}</div>
             </div>
-            ${!jstate.used ? `<button class="joker-use-btn" onclick="openJokerModal('${esc(p.name)}','${jstate.id}')" ${jstate.id==='underdog'?'style="display:none"':''}>Einsetzen</button>` : ''}
+            ${!jstate.used ? `<button class="joker-use-btn" onclick="openJokerModal('${esc(p.name)}','${jstate.id}')" ${(jstate.id==='underdog'||jstate.id==='veto')?'style="display:none"':''}>Einsetzen</button>` : ''}
             ${jstate.id==='underdog'&&!jstate.used ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--green);font-weight:700">⚡ Wird automatisch ausgelöst</div>` : ''}
           </div>`;
         }).join('')}
@@ -2265,27 +2509,23 @@ function renderJokerStatusBar() {
   const bar = document.getElementById('joker-status-bar');
   if (!bar) return;
   if (!state.players.length) { bar.innerHTML = ''; return; }
-  bar.innerHTML = `<div class="joker-bar">${state.players.map(p => {
+  bar.innerHTML = '<div class="joker-bar">' + state.players.map(p => {
     const pj = state.jokers[p.name] || [];
     const icons = pj.map(js => {
       const jd = getJokerDef(js.id);
       if (!jd) return '';
       const visual = jd.img
-        ? `<span class="bar-joker-img"><img src="${esc(jd.img)}" onerror="this.parentElement.textContent='${jd.icon}'"></span>`
-        : `<span title="${jd.name}">${jd.icon}</span>`;
-      return `<span class="joker-bar-icon ${js.used?'used':''}" title="${jd.name}${js.used?' (genutzt)':''}">${visual}</span>`;
+        ? '<span class="bar-joker-img"><img src="' + esc(jd.img) + '" onerror="this.parentElement.textContent=\'' + jd.icon + '\'"></span>'
+        : '<span title="' + jd.name + '">' + jd.icon + '</span>';
+      return '<span class="joker-bar-icon ' + (js.used?'used':'') + '" title="' + jd.name + (js.used?' (genutzt)':'') + '">' + visual + '</span>';
     }).join('');
     const hasGoal = state.secretGoals?.[p.name];
     const goalDone = !!(state.goalAchieved?.[p.name]);
     const goalIcon = goalDone ? '✅' : '🎯';
-    const goalTitle = goalDone ? 'Geheimziel erfüllt! Klicken zum Anzeigen' : 'Geheimziel anschauen';
-    return `<div class="joker-bar-player">
-      <span class="joker-bar-name" ${hasGoal ? `onclick="openGoalReview('${esc(p.name)}')" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px${goalDone?';color:var(--green)':''}" title="${goalTitle}"` : ''}>
-        ${esc(p.name)}${hasGoal ? ` ${goalIcon}` : ''}
-      </span>
-      ${icons}
-    </div>`;
-  }).join('')}</div>`;
+    const goalTitle = goalDone ? 'Geheimziel erfüllt!' : 'Geheimziel anschauen';
+    const clickAttr = hasGoal ? 'onclick="openGoalReview(\'' + esc(p.name) + '\')" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px' + (goalDone ? ';color:var(--green)' : '') + '" title="' + goalTitle + '"' : '';
+    return '<div class="joker-bar-player"><span class="joker-bar-name" ' + clickAttr + '>' + esc(p.name) + (hasGoal ? ' ' + goalIcon : '') + '</span>' + icons + '</div>';
+  }).join('') + '</div>';
 }
 
 function openGoalReview(playerName) {
@@ -2394,26 +2634,28 @@ function confirmJoker() {
   if (j==='skip') {
     const entry = state.plan[state.currentIdx];
     if (!entry) { closeModal('modal-joker'); return; }
-    // Remove the current game from the plan entirely, mark as skipped
+    // Remove the current game, mark as skipped
     const skippedGame = state.games.find(g=>g.id===entry.gameId);
     state.skipped.push({gameName: skippedGame?.name || '?', by: p});
     state.plan.splice(state.currentIdx, 1);
     state.currentIdx--; // will be incremented by nextGame()
 
-    // Find a compatible game not already in the plan (unplayed)
+    // Find a compatible, enabled, unplayed game not already in the plan
     const plannedIds = new Set(state.plan.map(e=>e.gameId));
     const compatible = getCompatibleGames().filter(g => !plannedIds.has(g.id));
     if (compatible.length) {
       const bonus = pickRandom(compatible);
-      state.plan.push({
-        gameId:bonus.id,
-        rule:pickRandom(bonus.rules||['Standard']),
-        teams:generateTeams(bonus.type),
-        done:false
+      // Insert right after current position (not at end)
+      const insertAt = Math.min(state.currentIdx + 1, state.plan.length);
+      state.plan.splice(insertAt, 0, {
+        gameId: bonus.id,
+        rule:   pickRandom(bonus.rules||['Standard']),
+        teams:  generateTeams(bonus.type),
+        done:   false
       });
-      showToast(`⏭️ ${skippedGame?.name||'Spiel'} entfernt! „${bonus.name}" hinten angehängt.`);
+      showToast(`⏭️ „${skippedGame?.name||'Spiel'}" raus! „${bonus.name}" kommt als nächstes!`);
     } else {
-      showToast(`⏭️ Spiel übersprungen! Kein neues Spiel verfügbar.`);
+      showToast('⏭️ Spiel übersprungen! Kein neues Spiel verfügbar.');
     }
 
     const pj2 = state.jokers[p]?.find(jj=>jj.id===j);
@@ -2464,19 +2706,29 @@ function renderHistory() {
   const c = document.getElementById('history-list');
   if (!c) return;
   if (!state.history.length) { c.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Noch keine Spiele</p></div>'; return; }
-  c.innerHTML = [...state.history].reverse().map((h,i) =>
-    `<div class="history-item">
-      <span style="font-size:.78rem;color:var(--muted)">${state.history.length-i}</span>
-      <div style="flex:1">
-        <div style="font-weight:600">${esc(h.gameName)} <span class="badge badge-${h.type}">${TYPE_LABELS[h.type]}</span></div>
-        <div class="history-pts">
-          ${Object.entries(h.pts).map(([name,p]) =>
-            `<span class="history-pt">${esc(name)}: <strong>${p}</strong>${h.special[name]?' ⭐':''}</span>`
-          ).join('')}
-        </div>
-      </div>
-    </div>`
-  ).join('');
+  c.innerHTML = [...state.history].reverse().map((h,i) => {
+    const num = state.history.length - i;
+    const vetoTag = h.vetoed ? '<span style="font-size:.7rem;background:rgba(233,69,96,.2);color:var(--accent);padding:2px 7px;border-radius:4px;margin-left:4px">🗳️ Gestrichen</span>' : '';
+    const ptsHtml = h.vetoed
+      ? '<span style="color:var(--muted);font-size:.78rem;text-decoration:line-through">' + Object.entries(h.pts).map(([name,p])=>esc(name)+': '+p).join(' · ') + '</span>'
+      : Object.entries(h.pts).map(([name,p]) =>
+          '<span class="history-pt">' + esc(name) + ': <strong>' + p + '</strong>' + (h.special&&h.special[name]?' ⭐':'') + '</span>'
+        ).join('');
+    return '<div class="history-item" style="' + (h.vetoed?'opacity:.6':'') + '">'
+      + '<span style="font-size:.78rem;color:var(--muted)">' + num + '</span>'
+      + '<div style="flex:1"><div style="font-weight:600">' + esc(h.gameName) + ' <span class="badge badge-' + h.type + '">' + TYPE_LABELS[h.type] + '</span>' + vetoTag + '</div>'
+      + '<div class="history-pts">' + ptsHtml + '</div></div>'
+      + '</div>';
+  }).join('');
+  // Also show skipped games
+  if ((state.skipped||[]).length) {
+    c.innerHTML += '<div style="margin-top:12px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:4px 0">⏭️ Übersprungene Spiele</div>'
+      + state.skipped.map(s => '<div class="history-item" style="opacity:.5">'
+        + '<span style="font-size:.78rem;color:var(--muted)">⏭️</span>'
+        + '<div style="flex:1"><div style="font-weight:600;text-decoration:line-through">' + esc(s.gameName) + '</div>'
+        + '<div style="font-size:.75rem;color:var(--muted)">Übersprungen von ' + esc(s.by) + '</div></div>'
+        + '</div>').join('');
+  }
 }
 
 function renderStats() {
@@ -2518,11 +2770,12 @@ function renderPlanList() {
   const total = state.plan.length;
   const done = state.plan.filter(e=>e.done).length;
   const pct = total > 0 ? Math.round((done/total)*100) : 0;
-  const half = Math.floor(total/2);
+  const half = Math.ceil(total/2);
+  const halfNote = (done===half&&total>0) ? ' · <span style="color:var(--gold)">⚡ Hälfte!</span>' : '';
   const progressHtml = `
     <div style="margin-bottom:12px;background:var(--surface);border-radius:10px;padding:12px 14px">
       <div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted);margin-bottom:6px">
-        <span>${done} / ${total} Spiele gespielt${done===half&&total>0?' <span style="color:var(--gold)">⚡ Hälfte!</span>':''}</span>
+        <span>${done} / ${total} Spiele gespielt${halfNote}</span>
         <span style="font-weight:700;color:${pct>=50?'var(--green)':'var(--muted)'}">${pct}%</span>
       </div>
       <div style="height:7px;background:rgba(255,255,255,.07);border-radius:4px">
@@ -2533,28 +2786,28 @@ function renderPlanList() {
     const g = state.games.find(g=>g.id===entry.gameId);
     if (!g) return '';
     const isCur = i===state.currentIdx, isDone = entry.done;
-    return `<div class="game-item ${isCur?'current':''} ${isDone?'done':''}">
-      <div class="game-cover">${g.coverImg?`<img src="${esc(g.coverImg)}" onerror="this.style.display='none'">`:'🎲'}</div>
-      <div>
-        <div class="game-name">${isDone?'✓ ':isCur?'▶ ':''}${esc(g.name)}</div>
-        <div class="game-meta">⭐ ${esc(entry.rule||'')}</div>
-      </div>
-      <span class="badge badge-${g.type}">${TYPE_SHORT[g.type]||g.type}</span>
-      <span style="font-size:.78rem;color:var(--muted)">${g.dur}m</span>
-    </div>`;
+    const cover = g.coverImg ? '<img src="' + esc(g.coverImg) + '" onerror="this.style.display=\'none\'">' : '🎲';
+    const prefix = isDone ? '✓ ' : isCur ? '▶ ' : '';
+    return '<div class="game-item ' + (isCur?'current':'') + ' ' + (isDone?'done':'') + '">' +
+      '<div class="game-cover">' + cover + '</div>' +
+      '<div><div class="game-name">' + prefix + esc(g.name) + '</div>' +
+      '<div class="game-meta">⭐ ' + esc(entry.rule||'') + '</div></div>' +
+      '<span class="badge badge-' + g.type + '">' + (TYPE_SHORT[g.type]||g.type) + '</span>' +
+      '<span style="font-size:.78rem;color:var(--muted)">' + (g.minDur&&g.minDur!==g.dur?g.minDur+'-'+g.dur:g.dur) + 'm</span>' +
+      '</div>';
   }).join('');
 
+  const skippedItems = (state.skipped||[]).map(s =>
+    '<div class="game-item" style="opacity:.4;text-decoration:line-through">' +
+    '<div class="game-cover">⏭️</div>' +
+    '<div><div class="game-name">' + esc(s.gameName) + '</div>' +
+    '<div class="game-meta">Übersprungen von ' + esc(s.by) + '</div></div>' +
+    '</div>'
+  ).join('');
   const skippedHtml = (state.skipped||[]).length ? `
     <div style="margin-top:14px">
       <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-left:4px">⏭️ Übersprungen</div>
-      ${state.skipped.map(s => `
-        <div class="game-item" style="opacity:.4;text-decoration:line-through">
-          <div class="game-cover">⏭️</div>
-          <div>
-            <div class="game-name">${esc(s.gameName)}</div>
-            <div class="game-meta">Übersprungen von ${esc(s.by)}</div>
-          </div>
-        </div>`).join('')}
+      ${skippedItems}
     </div>` : '';
 
   c.innerHTML = progressHtml + planHtml + skippedHtml;
@@ -2563,6 +2816,16 @@ function renderPlanList() {
 // ═══════════════════════════════════════════════════════════
 //  SAVE / LOAD SESSIONS
 // ═══════════════════════════════════════════════════════════
+function openSaveAsTournament() {
+  // Pre-fill name with date if empty
+  const nameEl = document.getElementById('save-name');
+  if (nameEl && !nameEl.value.trim()) {
+    nameEl.value = 'Spielabend ' + new Date().toLocaleDateString('de-DE');
+  }
+  openModal('modal-save');
+  setTimeout(()=>nameEl?.focus(), 300);
+}
+
 function openSaveModal() { openModal('modal-save'); }
 
 function saveSession(finalize) {
@@ -2570,30 +2833,22 @@ function saveSession(finalize) {
     `Marathon ${new Date().toLocaleDateString('de-DE')}`;
 
   const sessions = getSessions();
-  const id = uid();
-  sessions[id] = {
-    id, name,
-    date: new Date().toISOString(),
-    finalized: finalize,
-    players: state.players,
-    scores: state.scores,
-    history: state.history,
-    plan: state.plan,
-    currentIdx: state.currentIdx,
-    jokers: state.jokers,
-    timeLimit: state.timeLimit,
-    startTime: state.startTime,
-    games: state.games,
-  };
+  const snapshot = buildSessionSnapshot(name, finalize);
+  sessions[snapshot.id] = snapshot;
   setSessions(sessions);
   closeModal('modal-save');
   showToast(finalize ? '🏆 Als Turnier gespeichert!' : '💾 Session gespeichert!');
   renderSavedSessions();
 
   if (finalize) {
-    saveTournament({id, name, date: new Date().toISOString(),
+    saveTournament({id: snapshot.id, name, date: new Date().toISOString(),
       players: state.players, scores: state.scores,
-      history: state.history, games: state.games});
+      history: state.history, skipped: state.skipped||[], games: state.games});
+    setTimeout(()=>{
+      resetMarathonRuntime({ disconnectFirebase: true });
+      showScreen('screen-home');
+      renderSavedSessions();
+    }, 500);
   }
 }
 
@@ -2640,11 +2895,21 @@ function loadSession(id) {
   state.comebackGiven = s.comebackGiven || {};
   state.goalAchieved  = s.goalAchieved  || {};
   state.giftedJokers  = s.giftedJokers  || {};
+  state.activeJokers = s.activeJokers || {};
+  state._setupPhase = s.setupPhase || null;
+  state._marathonStarted = s.marathonStarted ?? true;
+  state._vetoFromEndScreen = false;
   if (s.games) state.games = s.games;
-  showScreen('screen-marathon');
+  if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
+    showScreen('screen-joker-pick');
+    renderJokerPickScreen();
+  } else {
+    showScreen('screen-marathon');
+  }
   document.getElementById('header-sub').textContent =
     `${state.players.map(p=>p.name).join(', ')} · ${state.plan.length} Spiele`;
   renderAll();
+  if (state._setupPhase === 'jokerPick' && !state._marathonStarted) renderJokerPickScreen();
   if (state.currentIdx >= 0) renderCurrentGame();
   showToast(`Session „${s.name}" geladen ✓`);
 }
@@ -2714,17 +2979,25 @@ function openTournamentDetail(id) {
   };
   const sorted = Object.entries(t.scores||{}).sort((a,b)=>b[1]-a[1]);
   const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
-  const histHtml = (t.history||[]).map((h,i) =>
-    `<div class="history-item">
-      <span style="font-size:.75rem;color:var(--muted)">${i+1}</span>
-      <div style="flex:1">
-        <div style="font-weight:600">${esc(h.gameName)} <span class="badge badge-${h.type}">${TYPE_LABELS[h.type]}</span></div>
-        <div class="history-pts">${Object.entries(h.pts||{}).map(([n,p])=>
-          `<span class="history-pt">${esc(n)}: <strong>${p}</strong>${h.special?.[n]?' ⭐':''}</span>`
-        ).join('')}</div>
-      </div>
-    </div>`
-  ).join('');
+  const histHtml = (t.history||[]).map((h,i) => {
+    const tags = [];
+    if (h.vetoed) tags.push('<span style="font-size:.68rem;background:rgba(233,69,96,.2);color:var(--accent);padding:1px 6px;border-radius:4px">🗳️ Veto</span>');
+    if (h.isRevanche) tags.push('<span style="font-size:.68rem;background:rgba(99,179,237,.2);color:#63b3ed;padding:1px 6px;border-radius:4px">🔁 Revanche</span>');
+    const tagHtml = tags.join(' ');
+    const ptsHtml = h.vetoed
+      ? '<span style="color:var(--muted);font-size:.78rem;text-decoration:line-through">' + Object.entries(h.pts||{}).map(([n,p])=>esc(n)+': '+p).join(' · ') + '</span>'
+      : Object.entries(h.pts||{}).map(([n,p])=>'<span class="history-pt">'+esc(n)+': <strong>'+p+'</strong>'+(h.special?.[n]?' ⭐':'')+'</span>').join('');
+    return '<div class="history-item" style="'+(h.vetoed?'opacity:.6':'')+'">'
+      +'<span style="font-size:.75rem;color:var(--muted)">'+(i+1)+'</span>'
+      +'<div style="flex:1"><div style="font-weight:600">'+esc(h.gameName)+' <span class="badge badge-'+h.type+'">'+TYPE_LABELS[h.type]+'</span> '+tagHtml+'</div>'
+      +'<div class="history-pts">'+ptsHtml+'</div></div></div>';
+  }).join('');
+
+  const skippedHtml = (t.skipped||[]).length
+    ? '<div style="margin-top:10px"><div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;margin-bottom:6px">⏭️ Übersprungen</div>'
+      + t.skipped.map(s=>'<div class="history-item" style="opacity:.5"><span>⏭️</span><div style="flex:1;text-decoration:line-through">'+esc(s.gameName)+'<span style="font-size:.72rem;color:var(--muted);margin-left:6px">von '+esc(s.by)+'</span></div></div>').join('')
+      + '</div>'
+    : '';
 
   document.getElementById('tournament-detail-content').innerHTML = `
     <div class="card" style="margin-bottom:16px">
@@ -2744,6 +3017,7 @@ function openTournamentDetail(id) {
     <div class="card">
       <div class="card-title">📊 Spielverlauf</div>
       ${histHtml || '<p style="color:var(--muted);font-size:.83rem">Keine Daten</p>'}
+      ${skippedHtml}
     </div>`;
 
   showScreen('screen-tournament-detail');
@@ -2753,38 +3027,68 @@ function openTournamentDetail(id) {
 //  END SCREEN
 // ═══════════════════════════════════════════════════════════
 function showEndScreen() {
-  // Check if any player has veto joker (used or not — it's always available at end)
   const vetoPlayers = state.players.filter(p =>
     (state.jokers[p.name]||[]).find(j=>j.id==='veto'&&!j.used)
   );
-  if (vetoPlayers.length) {
-    // Show veto picker first, then show end screen after
-    showVetoPicker(vetoPlayers, 0);
+  const gameCount = state.history.length;
+  const playerCount = state.players.length;
+  const vetoAllowed = gameCount >= playerCount + 2;
+
+  if (vetoPlayers.length && vetoAllowed) {
+    state._vetoFromEndScreen = true;
+    const shuffledVeto = shuffle([...vetoPlayers]);
+    showVetoSlotMachine(shuffledVeto);
     return;
   }
   _finishEndScreen();
 }
 
+let vetoedGameIndices = new Set();
+
+function showVetoSlotMachine(players) {
+  vetoPending = players;
+  vetoPendingIdx = 0;
+  vetoedGameIndices = new Set();
+  const el = document.getElementById('veto-slot-content');
+  if (!el) { showVetoPickerAnimated(players, 0); return; }
+  el.innerHTML = '<div style="font-size:1.4rem;font-weight:900;color:var(--gold);text-align:center;margin-bottom:16px;letter-spacing:1px">🗳️ VETO-JOKER WERDEN EINGESETZT</div>'
+    + '<p style="text-align:center;color:var(--muted);font-size:.88rem;margin-bottom:20px">Wer darf zuerst ein Spiel streichen?</p>'
+    + '<div id="slot-reel" style="font-size:2rem;font-weight:900;text-align:center;padding:20px;background:#111;border-radius:14px;border:3px solid var(--gold);min-height:80px;display:flex;align-items:center;justify-content:center">🎰</div>'
+    + '<button class="btn btn-gold" id="slot-spin-btn" style="width:100%;margin-top:16px;font-size:1rem;padding:14px" onclick="spinVetoSlot()">🎰 Drehen!</button>';
+  openModal('modal-veto-slot');
+}
+
+let _slotInterval = null;
+function spinVetoSlot() {
+  const btn = document.getElementById('slot-spin-btn');
+  const reel = document.getElementById('slot-reel');
+  if (!btn || !reel) return;
+  btn.disabled = true;
+  btn.textContent = '🎰 Dreht...';
+  let ticks = 0;
+  const maxTicks = 28;
+  const names = vetoPending.map(p=>p.name);
+  _slotInterval = setInterval(()=>{
+    ticks++;
+    reel.textContent = names[ticks % names.length];
+    playTone(200 + (ticks*15 % 400), 0.05, 'square', 0.08);
+    if (ticks >= maxTicks) {
+      clearInterval(_slotInterval);
+      const winner = vetoPending[0];
+      reel.innerHTML = '<span style="color:var(--gold)">👑 ' + esc(winner.name) + '!</span>';
+      btn.textContent = '▶️ Veto einsetzen';
+      btn.disabled = false;
+      btn.onclick = () => { closeModal('modal-veto-slot'); showVetoPickerAnimated(vetoPending, 0); };
+      soundComeback();
+      haptic([100,50,100,50,300]);
+    }
+  }, 80);
+}
+
 let vetoPending = [];
 let vetoPendingIdx = 0;
 
-function showVetoPicker(players, idx) {
-  vetoPending = players;
-  vetoPendingIdx = idx;
-  if (idx >= players.length) { _finishEndScreen(); return; }
-  const p = players[idx];
-  const c = document.getElementById('veto-game-list');
-  c.innerHTML = state.history.map((h, i) => `
-    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--surface);border-radius:8px;margin-bottom:6px;cursor:pointer;border:2px solid transparent;transition:.15s"
-      id="veto-opt-${i}" onclick="selectVetoGame(${i})">
-      <div style="font-weight:700;font-size:.88rem;flex:1">${esc(h.gameName)}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${Object.entries(h.pts).map(([name,pt])=>`<span style="font-size:.72rem;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.08)">${esc(name)}: ${pt>0?'+':''}${pt}</span>`).join('')}
-      </div>
-    </div>`).join('');
-  document.getElementById('veto-player-name').textContent = p.name;
-  openModal('modal-veto-pick');
-}
+// showVetoPicker moved to showVetoPickerAnimated below
 
 let selectedVetoGame = -1;
 function selectVetoGame(idx) {
@@ -2797,21 +3101,83 @@ function selectVetoGame(idx) {
 
 function confirmVeto() {
   if (selectedVetoGame < 0) { showToast('Bitte ein Spiel auswählen!'); return; }
+  // Prevent double-vetoing the same game
+  if (vetoedGameIndices.has(selectedVetoGame)) {
+    showToast('Dieses Spiel wurde bereits gestrichen! Wähle ein anderes.'); return;
+  }
   const p = vetoPending[vetoPendingIdx];
   const h = state.history[selectedVetoGame];
   if (!h) return;
-  // Remove points from ALL players for this game
-  Object.entries(h.pts).forEach(([name, pt]) => {
-    state.scores[name] = (state.scores[name]||0) - pt;
-  });
-  // Mark veto joker used
-  const vj = (state.jokers[p.name]||[]).find(j=>j.id==='veto');
-  if (vj) vj.used = true;
-  showToast(`🗳️ Veto! "${h.gameName}" aus der Wertung gestrichen!`);
   closeModal('modal-veto-pick');
+  vetoedGameIndices.add(selectedVetoGame);
+  // Mark game as vetoed in history for archive display
+  h.vetoed = true;
+  h.vetoBy = p.name;
+
+  // Animate point removal in scoreboard
+  const changes = Object.entries(h.pts).filter(([n,v])=>v>0);
+  const content = changes.map(([name,pt])=>
+    '<div class="veto-anim-row" id="vr-' + name.replace(/\s/g,'_') + '" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(233,69,96,.08);border:1px solid rgba(233,69,96,.3);border-radius:10px;margin-bottom:8px">'
+    + '<span style="font-weight:700">' + esc(name) + '</span>'
+    + '<span style="font-size:1.1rem;font-weight:800;color:var(--accent)">-' + pt + ' Punkte</span>'
+    + '</div>'
+  ).join('');
+
+  document.getElementById('veto-anim-content').innerHTML = `
+    <div style="font-size:1.5rem;text-align:center;margin-bottom:8px">🗳️💥</div>
+    <div style="font-weight:800;font-size:1rem;text-align:center;color:var(--accent);margin-bottom:14px">
+      "${esc(h.gameName||'Spiel')}" wird gestrichen!
+    </div>
+    ${content}`;
+  openModal('modal-veto-anim');
+
+  // Switch to score tab so animation is visible
+  switchTab('tab-score');
+
+  changes.forEach(([name, pt], i) => {
+    setTimeout(()=>{
+      const safeId = name.replace(/\s/g,'_');
+      const row = document.getElementById('vr-' + safeId);
+      if (row) {
+        row.style.transition = 'all .4s ease';
+        row.style.background = 'rgba(233,69,96,.25)';
+        row.style.transform = 'scale(1.04)';
+        setTimeout(()=>{ if(row){row.style.transform='scale(1)';} }, 400);
+      }
+      // Flash the .score-row in the scoreboard by player name
+      document.querySelectorAll('.score-row').forEach(sr => {
+        const nameEl = sr.querySelector('.score-name');
+        if (nameEl && nameEl.textContent.trim() === name) {
+          sr.classList.remove('score-row-flash');
+          void sr.offsetWidth;
+          sr.classList.add('score-row-flash');
+          // Also update the score number visually before renderAll
+          const ptsEl = sr.querySelector('.score-pts');
+          if (ptsEl) {
+            ptsEl.style.color = 'var(--accent)';
+            ptsEl.style.transition = 'color .3s';
+          }
+        }
+      });
+      state.scores[name] = (state.scores[name]||0) - pt;
+      renderAll();
+    }, 300 + i * 600);
+  });
+
+  // After all animations
+  setTimeout(()=>{
+    const vj = (state.jokers[p.name]||[]).find(j=>j.id==='veto');
+    if (vj) vj.used = true;
+    soundComeback();
+    saveCurrentToLS();
+    document.getElementById('veto-anim-ok').style.display = '';
+  }, 400 + changes.length * 500);
+}
+
+function closeVetoAnim() {
+  closeModal('modal-veto-anim');
   selectedVetoGame = -1;
-  // Next veto player or finish
-  setTimeout(()=>showVetoPicker(vetoPending, vetoPendingIdx+1), 400);
+  setTimeout(()=>showVetoPickerAnimated(vetoPending, vetoPendingIdx+1), 400);
 }
 
 function skipVeto() {
@@ -2840,7 +3206,7 @@ function _finishEndScreen() {
           </div>`).join('')}
       </div>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-gold" onclick="saveSession(true)">🏆 Als Turnier speichern</button>
+        <button class="btn btn-gold" onclick="openSaveAsTournament()">🏆 Als Turnier speichern</button>
         <button class="btn btn-secondary" onclick="location.reload()">🔄 Neu starten</button>
       </div>
     </div>`;
@@ -2977,51 +3343,94 @@ function openGameLibraryModal() {
   const c = document.getElementById('game-library-list');
   const TYPE_BADGE = {ffa:'JgJ','2v2':'TvT','3v1':'1vAll',coop:'Koop'};
   const TYPE_CLS   = {ffa:'badge-ffa','2v2':'badge-2v2','3v1':'badge-3v1',coop:'badge-coop'};
-  // Update modal subtitle with count
   const p = document.querySelector('#modal-game-library .modal > p');
-  if (p) p.textContent = `${state.games.length} Spiel${state.games.length!==1?'e':''} gespeichert.`;
+  if (p) p.innerHTML = state.games.length + ' Spiel' + (state.games.length!==1?'e':'') + ' gespeichert. &nbsp;'
+    + '<button class="btn btn-secondary btn-sm" onclick="exportGames()" style="margin-right:4px">⬇️ Exportieren</button>'
+    + '<button class="btn btn-secondary btn-sm" onclick="importGamesClick()">⬆️ Importieren</button>'
+    + '<input type="file" id="import-games-file" accept=".json" style="display:none" onchange="importGamesFile(event)"/>';
   if (!state.games.length) {
     c.innerHTML = '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
   } else {
-    c.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.85rem">
-      <thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">
-        <th style="text-align:left;padding:6px 8px">#</th>
-        <th style="text-align:left;padding:6px 8px">Spiel</th>
-        <th style="text-align:left;padding:6px 8px">Typ</th>
-        <th style="text-align:left;padding:6px 8px">Spieler</th>
-        <th style="text-align:left;padding:6px 8px">Dauer</th>
-        <th style="text-align:left;padding:6px 8px">Optionen</th>
-        <th></th>
-      </tr></thead>
-      <tbody>${state.games.map((g,i) => `
-        <tr style="border-bottom:1px solid rgba(255,255,255,.05);transition:.15s" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
-          <td style="padding:8px 8px;color:var(--muted);font-weight:700">${i+1}</td>
-          <td style="padding:8px 8px">
-            <div style="display:flex;align-items:center;gap:8px">
-              ${g.coverImg ? `<img src="${esc(g.coverImg)}" style="width:32px;height:32px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'">` : '<span style="font-size:1.2rem">🎲</span>'}
-              <div>
-                <div style="font-weight:600">${esc(g.name)}</div>
-                ${g.dev ? `<div style="font-size:.72rem;color:var(--muted)">${esc(g.dev)}</div>` : ''}
-              </div>
-            </div>
-          </td>
-          <td style="padding:8px 8px"><span class="badge ${TYPE_CLS[g.type]}">${TYPE_BADGE[g.type]}</span></td>
-          <td style="padding:8px 8px;color:var(--muted)">👥 ${g.minP}–${g.maxP}</td>
-          <td style="padding:8px 8px;color:var(--muted)">${g.dur}min</td>
-          <td style="padding:8px 8px">
-            ${g.winCondition==='first' ? '<span style="font-size:.7rem;color:var(--accent)">⚡ 1st wins</span>' : ''}
-            ${g.tiesAllowed ? '<span style="font-size:.7rem;color:var(--green)"> 🤝 Ties</span>' : ''}
-            ${!g.winCondition||g.winCondition==='all'&&!g.tiesAllowed ? '<span style="font-size:.7rem;color:var(--muted)">Standard</span>' : ''}
-          </td>
-          <td style="padding:8px 8px;display:flex;gap:4px">
-            <button class="btn btn-secondary btn-icon btn-sm" onclick="closeModal('modal-game-library');openAddGameModal('${g.id}')" title="Bearbeiten">✏️</button>
-            <button class="btn btn-danger btn-icon btn-sm" onclick="deleteGame('${g.id}');openGameLibraryModal()" title="Löschen">🗑️</button>
-          </td>
-        </tr>`).join('')}
-      </tbody>
-    </table>`;
+    const rows = state.games.map((g,i) => {
+      const cover = g.coverImg
+        ? '<img src="' + esc(g.coverImg) + '" style="width:32px;height:32px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'">'
+        : '<span style="font-size:1.2rem">🎲</span>';
+      const devLine = g.dev ? '<div style="font-size:.72rem;color:var(--muted)">' + esc(g.dev) + '</div>' : '';
+      const durLabel = g.minDur && g.minDur !== g.dur ? g.minDur + '–' + g.dur : g.dur;
+      const rowStyle = 'border-bottom:1px solid rgba(255,255,255,.05);transition:.15s;' + (g.enabled===false?'opacity:.45':'');
+      return '<tr style="' + rowStyle + '" onmouseover="this.style.background=\'rgba(255,255,255,.03)\'" onmouseout="this.style.background=\'\'">'
+        + '<td style="padding:8px 8px;text-align:center"><input type="checkbox" ' + (g.enabled!==false?'checked':'') + ' style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleGameEnabled(\'' + g.id + '\',this.checked)"/></td>'
+        + '<td style="padding:8px 8px;color:var(--muted);font-weight:700">' + (i+1) + '</td>'
+        + '<td style="padding:8px 8px"><div style="display:flex;align-items:center;gap:8px">' + cover + '<div><div style="font-weight:600">' + esc(g.name) + '</div>' + devLine + '</div></div></td>'
+        + '<td style="padding:8px 8px"><span class="badge ' + TYPE_CLS[g.type] + '">' + TYPE_BADGE[g.type] + '</span></td>'
+        + '<td style="padding:8px 8px;color:var(--muted)">👥 ' + g.minP + '–' + g.maxP + '</td>'
+        + '<td style="padding:8px 8px;color:var(--muted)">' + durLabel + 'min</td>'
+        + '<td style="padding:8px 8px;display:flex;gap:4px">'
+        + '<button class="btn btn-secondary btn-icon btn-sm" onclick="closeModal(\'modal-game-library\');openAddGameModal(\'' + g.id + '\')" title="Bearbeiten">✏️</button>'
+        + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGame(\'' + g.id + '\');openGameLibraryModal()" title="Löschen">🗑️</button>'
+        + '</td></tr>';
+    }).join('');
+
+    c.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--surface);border-radius:8px">'
+      + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;font-weight:600">'
+      + '<input type="checkbox" id="select-all-games" style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleAllGames(this.checked)"/> Alle auswählen / abwählen</label>'
+      + '<span style="font-size:.75rem;color:var(--muted);margin-left:auto">✓ = im Marathon dabei</span></div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:.85rem">'
+      + '<thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
+      + '<th style="padding:6px 8px">✓</th><th style="text-align:left;padding:6px 8px">#</th>'
+      + '<th style="text-align:left;padding:6px 8px">Spiel</th><th style="text-align:left;padding:6px 8px">Typ</th>'
+      + '<th style="text-align:left;padding:6px 8px">Spieler</th><th style="text-align:left;padding:6px 8px">Dauer</th><th></th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table>';
+
+    const allEnabled = state.games.every(g=>g.enabled!==false);
+    const noneEnabled = state.games.every(g=>g.enabled===false);
+    const cb = document.getElementById('select-all-games');
+    if(cb){ cb.checked=allEnabled; cb.indeterminate=!allEnabled&&!noneEnabled; }
   }
   openModal('modal-game-library');
+}
+
+function exportGames() {
+  const data = JSON.stringify(state.games, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'spielmarathon-spiele.json';
+  a.click();
+  showToast('Spiele exportiert ✓');
+}
+
+function importGamesClick() {
+  document.getElementById('import-games-file')?.click();
+}
+
+function importGamesFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!Array.isArray(imported)) throw new Error('Kein Array');
+      let added = 0;
+      imported.forEach(g => {
+        if (!g.name || !g.id) return;
+        // Skip duplicates by id
+        if (!state.games.find(x=>x.id===g.id)) {
+          state.games.push(g);
+          added++;
+        }
+      });
+      saveLS();
+      updateGameCountBadge();
+      openGameLibraryModal();
+      showToast(added + ' Spiele importiert ✓');
+    } catch(err) {
+      showToast('Fehler beim Importieren: ' + err.message);
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3132,7 +3541,7 @@ function confirmTwistAssignment() {
 const JOKER_TIPS = {
   double:  '💡 Tipp: Nur einsetzen wenn du sicher bist zu gewinnen! Top-Hälfte = Punkte ×2, sonst 0.',
   revenge: '💡 Tipp: Ideal nach einer knappen Niederlage. Deine alten Punkte bleiben – das Wiederholungsspiel bringt extra Punkte!',
-  veto:    '💡 Tipp: Du startest mit -3 Punkten, kannst aber am Ende das Spiel streichen, wo dein stärkster Gegner am meisten geholt hat. Sehr stark!',
+  veto:    '💡 Tipp: Du startest mit -3 Punkten, aber genau ein Spiel vor Schluss wird dein Veto automatisch ausgelöst. Streiche das Spiel, wo dein stärkster Gegner am meisten geholt hat!',
   twist:   '💡 Tipp: Du darfst selbst entscheiden wer in welchem Team spielt. Setze ihn ein wenn du einen Vorteil willst!',
   underdog:'💡 Tipp: Wird automatisch ausgelöst – du musst nichts tun. Wer bei Halbzeit Letzter ist, bekommt +3 Punkte.',
   tipster: '💡 Tipp: Tippe auf den Gewinner. Bei Jeder-gegen-Jeden = +4 Punkte, bei Team/1-gegen-Alle = +2 Punkte.',
@@ -3158,7 +3567,67 @@ function openJokerLightbox(jokerId, event) {
   openModal('modal-joker-lightbox');
 }
 
-// ── Crop Editor ──────────────────────────────────────────────
+function toggleGameEnabled(gameId, enabled) {
+  const g = state.games.find(g=>g.id===gameId);
+  if (g) { g.enabled = enabled; saveLS(); }
+}
+
+function toggleAllGames(enabled) {
+  state.games.forEach(g=>g.enabled=enabled);
+  saveLS();
+  openGameLibraryModal(); // re-render
+}
+
+// ── Veto auto-trigger one game before end ─────────────────
+function checkVetoAutoTrigger() {
+  const total = state.plan.length;
+  const done = state.plan.filter(e=>e.done).length;
+  const remaining = state.plan.filter(e=>!e.done).length;
+  if (remaining !== 1) return; // Only trigger when exactly 1 game remains
+  const vetoPlayers = state.players.filter(p =>
+    (state.jokers[p.name]||[]).find(j=>j.id==='veto'&&!j.used)
+  );
+  if (!vetoPlayers.length) return;
+  if (state.comebackGiven?.vetoShown) return;
+  if (!state.comebackGiven) state.comebackGiven = {};
+  state.comebackGiven.vetoShown = true;
+  const shuffledVeto = shuffle([...vetoPlayers]);
+  showVetoSlotMachine(shuffledVeto);
+}
+
+// Override showVetoPicker to show animated score changes
+function showVetoPickerAnimated(players, idx) {
+  vetoPending = players;
+  vetoPendingIdx = idx;
+  if (idx >= players.length) {
+    // All vetos done — if this was triggered at end screen, finish it; otherwise just continue
+    if (state._vetoFromEndScreen) { state._vetoFromEndScreen=false; _finishEndScreen(); }
+    else { renderAll(); saveCurrentToLS(); }
+    return;
+  }
+  const p = players[idx];
+  const c = document.getElementById('veto-game-list');
+  c.innerHTML = state.history.map((h, i) => {
+    if (vetoedGameIndices.has(i)) return ''; // already vetoed, skip
+    const pts = Object.entries(h.pts).filter(([n,v])=>v>0);
+    const preview = pts.map(([name,pt])=>
+      '<span style="font-size:.72rem;padding:2px 7px;border-radius:999px;background:rgba(233,69,96,.15);color:var(--accent)">-' + pt + ' für ' + esc(name) + '</span>'
+    ).join(' ');
+    return '<div style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--surface);border-radius:8px;margin-bottom:6px;cursor:pointer;border:2px solid transparent;transition:.15s"'
+      + ' id="veto-opt-' + i + '" onclick="selectVetoGame(' + i + ')">'
+      + '<div style="font-weight:700;font-size:.88rem">' + esc(h.gameName||'Spiel '+(i+1)) + '</div>'
+      + '<div style="display:flex;gap:4px;flex-wrap:wrap">' + preview + '</div>'
+      + '</div>';
+  }).join('');
+  document.getElementById('veto-player-name').textContent = p.name;
+  openModal('modal-veto-pick');
+}
+
+// Override showVetoPicker to use animated version
+function showVetoPicker(players, idx) {
+  showVetoPickerAnimated(players, idx);
+}
+
 function openJokerCrop(jokerIndex) {
   cropTarget = {jokerIndex};
   // Open file picker
@@ -3399,7 +3868,7 @@ function checkComeback() {
   // Only give one gifted joker ever, only after the halfway point
   const total = state.plan.length;
   const done = state.history.length;
-  const half = Math.floor(total/2);
+  const half = Math.ceil(total/2);
   if (done < half) return;
   if (state.comebackGiven?.jokerGiven) return;
   const sorted = [...state.players].sort((a,b)=>state.scores[b.name]-state.scores[a.name]);
@@ -3477,7 +3946,7 @@ const SECRET_GOALS = [
     check:(h,n,scores,prev,hist,jokers,plan)=>{
       const total = plan ? plan.length : 0;
       if(total<2) return false;
-      const half = Math.floor(total/2);
+      const half = Math.ceil(total/2);
       if(hist.length !== half) return false;
       const vals=Object.values(scores);
       const myS=scores[n]||0;
@@ -3572,7 +4041,7 @@ function getJokerMeisterRule(jokerId) {
   const rules = {
     double:  '🎯 Doppelt oder Nichts: Du darfst NICHT 0 Punkte bekommen (also Top-Hälfte landen)',
     revenge: '🔁 Revanche: Das wiederholte Spiel muss mindestens gleich viele Punkte bringen wie das Original',
-    veto:    '🗳️ Veto: Am Ende ein Spiel streichen – die -3 Startpunkte müssen sich gelohnt haben',
+    veto:    '🗳️ Veto: Streiche das Spiel, in dem dein stärkster Gegner die meisten Punkte geholt hat',
     twist:   '🎭 Rollentausch: Bei einem Team- oder 1-gegen-Alle-Spiel eingesetzt und Team selbst zugeteilt',
     underdog:'👑 Underdog-Bonus: Wird automatisch ausgelöst – zählt immer als sinnvoll eingesetzt',
     tipster: '🔮 Tipp-Joker: Dein Tipp muss richtig gewesen sein',
@@ -3889,6 +4358,10 @@ function checkQRScoreboard() {
 //  INIT
 // ═══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  // Store original marathon screen HTML so it can be restored after tournament ends
+  const _ms = document.getElementById('screen-marathon');
+  if (_ms) window._marathonScreenHTML = _ms.innerHTML;
+
   checkQRScoreboard();
   loadLS();
   loadTheme();
@@ -3902,6 +4375,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
+      // Never close goal handover, secret goal, or veto modals by clicking outside
+      const blocked = ['modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick'];
+      if (blocked.includes(overlay.id)) return;
       if (e.target===overlay) overlay.classList.remove('open');
     });
   });
@@ -4229,6 +4705,365 @@ function openPlayerQRModal() {
 document.addEventListener('DOMContentLoaded', () => {
   checkMobilePlayerView();
   renderFbStatus();
+});
+</script>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  V35 IMPROVEMENTS: private mobile joker pick + better team split
+// ═══════════════════════════════════════════════════════════
+const _SM_LOCAL_RENDER_JOKER_PICK = window.renderJokerPickScreen;
+const _SM_ORIGINAL_START_SECRET_GOALS = window.startSecretGoals;
+
+function smSafeId(str) {
+  return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+function smMobileEsc(str) {
+  return String(str ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+}
+function smGetJokerDefsForSync() {
+  return [...JOKER_DEFS.map(j => ({id:j.id, icon:j.icon, name:j.name, desc:j.desc, img:j.img || ''})), {...SKIP_JOKER}];
+}
+function smJokerVisualHtml(jd, size='2.1rem') {
+  if (!jd) return '🃏';
+  return jd.img
+    ? `<img src="${smMobileEsc(jd.img)}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.style.display='none';this.parentElement.textContent='${smMobileEsc(jd.icon||'🃏')}'">`
+    : `<span style="font-size:${size}">${smMobileEsc(jd.icon || '🃏')}</span>`;
+}
+
+// Start now prepares a private phone-based joker-pick phase when Firebase works.
+window.startMarathon = function startMarathon() {
+  if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
+  const compatible = getCompatibleGames();
+  if (!compatible.length) { showToast('Keine kompatiblen Spiele für diese Spielerzahl!'); return; }
+
+  // Wichtig: Jeder neue Marathon bekommt eine frische Host-/QR-Session.
+  if (typeof fbDisconnect === 'function' && typeof fbSessionId !== 'undefined' && fbSessionId) {
+    try { fbDisconnect(); } catch(e) { console.warn('Could not close old Firebase session:', e); }
+  }
+
+  state.timeLimit = parseInt(document.getElementById('time-limit').value) || 0;
+  state.startTime = Date.now();
+  state.scores = {};
+  state.jokers = {};
+  state.history = [];
+  state.activeJokers = {};
+  state.plan = [];
+  state.skipped = [];
+  state.secretGoals = {};
+  state.secretGoalExtras = {};
+  state.comebackGiven = {};
+  state.giftedJokers = {};
+  state.goalAchieved = {};
+  state._marathonStarted = false;
+  state._setupPhase = 'jokerPick';
+  state._vetoFromEndScreen = false;
+  state.currentIdx = -1;
+  state.jokerPicks = {};
+
+  const ms = document.getElementById('screen-marathon');
+  if (ms && window._marathonScreenHTML) ms.innerHTML = window._marathonScreenHTML;
+
+  state.players.forEach(p => {
+    state.scores[p.name] = 0;
+    state.jokerPicks[p.name] = [];
+  });
+
+  buildPlan();
+
+  // Auto-start an online session so player phones can scan immediately.
+  if (!fbSessionId && typeof fbInit === 'function' && fbInit()) {
+    try { fbStartSession(); } catch(e) { console.warn('Auto Firebase start failed:', e); }
+  }
+  showScreen('screen-joker-pick');
+  renderJokerPickScreen();
+  if (fbIsHost) fbPushState();
+};
+
+window.renderJokerPickScreen = function renderJokerPickScreen() {
+  const c = document.getElementById('joker-pick-players');
+  if (!c) return;
+
+  if (!state._forceLocalJokerPick && fbIsHost && fbSessionId) {
+    const allDone = state.players.every(p => (state.jokerPicks[p.name] || []).length >= 2);
+    c.innerHTML = `
+      <div class="card" style="margin-bottom:16px;border:2px solid rgba(78,205,196,.35)">
+        <div class="card-title">📱 Private Jokerwahl am Handy</div>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;margin-bottom:12px">
+          Jeder Spieler scannt <strong style="color:var(--gold)">seinen eigenen QR-Code</strong> und wählt dort geheim 2 Joker. Auf diesem Hauptgerät sieht man nur, wer schon fertig ist – nicht welche Joker gewählt wurden.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-gold" onclick="openPlayerQRModal()">📱 Spieler-QR anzeigen</button>
+          <button class="btn btn-secondary" onclick="fbPushState();showToast('Handy-Ansichten aktualisiert ✓')">🔄 An Handys senden</button>
+          <button class="btn btn-ghost" onclick="state._forceLocalJokerPick=true;renderJokerPickScreen()">Notfall: lokal wählen</button>
+        </div>
+      </div>
+      <div class="grid-2" style="gap:12px">
+        ${state.players.map(p => {
+          const picks = state.jokerPicks[p.name] || [];
+          const done = picks.length >= 2;
+          return `<div class="card" style="padding:16px;border-left:4px solid ${done?'var(--green)':'var(--accent)'}">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}</span>
+              <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--gold)'}">${done?'✅ Fertig':picks.length+'/2 gewählt'}</span>
+            </div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:8px">${done?'Joker geheim gespeichert.':'Wartet auf Auswahl am Handy.'}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="text-align:center;margin-top:16px;font-size:.82rem;color:${allDone?'var(--green)':'var(--muted)'}">
+        ${allDone ? '✅ Alle Joker sind geheim gewählt. Du kannst jetzt zu den Geheimzielen weitergehen.' : 'Noch nicht alle Spieler sind fertig.'}
+      </div>`;
+    return;
+  }
+
+  // Offline / fallback: use original visible picker.
+  if (_SM_LOCAL_RENDER_JOKER_PICK) _SM_LOCAL_RENDER_JOKER_PICK();
+};
+
+window.startSecretGoals = function startSecretGoals() {
+  if (_SM_ORIGINAL_START_SECRET_GOALS) _SM_ORIGINAL_START_SECRET_GOALS();
+  if (fbIsHost) {
+    state._setupPhase = 'secretGoals';
+    fbPushState();
+  }
+};
+
+// Override Firebase state push: now includes current phase, joker definitions + images, and private picks.
+window.fbPushState = function fbPushState() {
+  if (!fbSyncEnabled || !fbSessionRef || !fbIsHost) return;
+  const cleanGoals = {};
+  Object.entries(state.secretGoals||{}).forEach(([name, goal]) => {
+    if (!goal) return;
+    cleanGoals[name] = { id: goal.id, icon: goal.icon, text: goal.text, reward: goal.reward, endOnly: goal.endOnly };
+  });
+  const cleanGames = (state.games||[]).map(g=>({
+    id:g.id, name:g.name, type:g.type, dur:g.dur, minP:g.minP, maxP:g.maxP
+  }));
+  const data = {
+    players: state.players,
+    scores: state.scores,
+    history: state.history,
+    plan: state.plan,
+    currentIdx: state.currentIdx,
+    jokers: state.jokers,
+    jokerPicks: state.jokerPicks,
+    jokerDefs: smGetJokerDefsForSync(),
+    secretGoals: cleanGoals,
+    goalAchieved: state.goalAchieved,
+    activeJokers: state.activeJokers,
+    games: cleanGames,
+    phase: state._setupPhase || (state._marathonStarted ? 'marathon' : 'setup'),
+    marathonStarted: !!state._marathonStarted,
+    ts: Date.now(),
+    hostAlive: true,
+  };
+  fbSessionRef.set(data).catch(e=>console.error('FB push error:',e));
+};
+
+window.fbListenGuestActions = function fbListenGuestActions() {
+  if (!fbSyncEnabled || !fbSessionRef || !fbIsHost) return;
+  fbSessionRef.child('guestActions').off();
+  fbSessionRef.child('guestActions').on('child_added', snap => {
+    const action = snap.val();
+    if (!action || Date.now() - action.ts > 120000) return;
+    snap.ref.remove();
+    if (action.type === 'jokerPick') {
+      const p = state.players.find(x => x.name === action.playerName);
+      const validIds = new Set(JOKER_DEFS.map(j=>j.id));
+      const picks = Array.isArray(action.picks) ? action.picks.filter(id=>validIds.has(id)).slice(0,2) : [];
+      if (p && picks.length === 2) {
+        state.jokerPicks[p.name] = picks;
+        renderJokerPickScreen();
+        fbPushState();
+        showToast(`📱 ${p.name} hat Joker gewählt ✓`);
+      }
+    }
+    if (action.type === 'useJoker') {
+      openJokerModal(action.playerName, action.jokerId);
+      showToast(`📱 ${action.playerName} möchte Joker einsetzen!`);
+    }
+  });
+};
+
+window.openPlayerQRModal = function openPlayerQRModal() {
+  if (!fbSessionId) { showToast('Erst Session starten!'); return; }
+  const c = document.getElementById('player-qr-list');
+  c.innerHTML = state.players.map(p => {
+    const id = smSafeId(p.name);
+    const url = `${NETLIFY_URL}#session=${fbSessionId}&player=${encodeURIComponent(p.name)}`;
+    return `<div style="text-align:center;padding:12px;background:var(--surface);border-radius:10px;margin-bottom:10px">
+      <div style="font-weight:700;margin-bottom:8px">${esc(p.name)}</div>
+      <div id="pqr-${id}" style="display:inline-block;background:#fff;padding:8px;border-radius:8px"></div>
+      <div style="font-size:.65rem;color:var(--muted);margin-top:6px;word-break:break-all">${url}</div>
+    </div>`;
+  }).join('');
+  setTimeout(()=>{
+    state.players.forEach(p => {
+      const el = document.getElementById(`pqr-${smSafeId(p.name)}`);
+      const url = `${NETLIFY_URL}#session=${fbSessionId}&player=${encodeURIComponent(p.name)}`;
+      if (el && window.QRCode) new QRCode(el,{text:url,width:140,height:140,colorDark:'#1a1a2e',colorLight:'#ffffff'});
+    });
+  }, 80);
+  openModal('modal-player-qr');
+};
+
+window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playerName) {
+  if (!fbInit()) {
+    document.body.innerHTML = `<div style="padding:40px;text-align:center;color:#e94560;font-family:sans-serif">Firebase nicht verfügbar. Bitte über die veröffentlichte GitHub-Seite öffnen.</div>`;
+    return;
+  }
+  document.body.style.background = '#0d0d1a';
+  document.body.style.color = '#e0e0e0';
+  document.body.style.margin = '0';
+  document.body.style.fontFamily = 'system-ui,sans-serif';
+  document.body.innerHTML = `
+    <div style="max-width:440px;margin:0 auto;padding:16px 14px 80px">
+      <div style="text-align:center;padding:20px 0 16px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:16px">
+        <div style="font-size:1.6rem;font-weight:800;color:#ffd700">🎮 Spielmarathon</div>
+        <div style="font-size:.8rem;color:#888;margin-top:4px">Session: <strong style="color:#e0e0e0">${smMobileEsc(sessionId)}</strong> · ${smMobileEsc(playerName)}</div>
+      </div>
+      <div id="mobile-content"><div style="text-align:center;padding:60px 20px;color:#888">⏳ Verbinde...</div></div>
+    </div>`;
+
+  const ref = firebase.database().ref(`sessions/${sessionId}`);
+  ref.on('value', snap => {
+    const data = snap.val();
+    const c = document.getElementById('mobile-content');
+    if (!c) return;
+    if (!data) {
+      c.innerHTML = `<div style="text-align:center;padding:40px 20px"><div style="font-size:2rem;margin-bottom:12px">❌</div><div style="color:#e94560;font-weight:700">Session nicht gefunden!</div></div>`;
+      return;
+    }
+    const players = data.players || [];
+    if (!players.find(p => p.name === playerName)) {
+      c.innerHTML = `<div style="text-align:center;padding:40px 20px;color:#e94560;font-weight:700">Dieser Spieler gehört nicht zu dieser Session.</div>`;
+      return;
+    }
+
+    const defs = data.jokerDefs || smGetJokerDefsForSync();
+    const pickDefs = defs.filter(j => j.id !== 'skip');
+    const savedPicks = data.jokerPicks?.[playerName] || [];
+    if (!window._mobilePicks) window._mobilePicks = {};
+    if (!window._mobilePicks[sessionId + playerName]) window._mobilePicks[sessionId + playerName] = [...savedPicks];
+    const currentPicks = window._mobilePicks[sessionId + playerName];
+
+    if ((data.phase === 'jokerPick' || !data.marathonStarted) && !(data.jokers?.[playerName]?.length)) {
+      const done = savedPicks.length >= 2;
+      c.innerHTML = `
+        <div style="background:#1a1a2e;border-radius:16px;padding:14px;margin-bottom:12px;border:2px solid ${done?'#4ecdc4':'rgba(255,215,0,.25)'}">
+          <div style="font-size:.7rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🃏 Geheime Jokerwahl</div>
+          <div style="font-size:.9rem;line-height:1.5;color:#aaa">Wähle 2 Joker. Die anderen sehen auf dem Hauptgerät nur „fertig“, aber nicht deine Auswahl.</div>
+          ${done?'<div style="margin-top:8px;color:#4ecdc4;font-weight:800">✅ Auswahl gespeichert</div>':''}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          ${pickDefs.map(j => {
+            const selected = currentPicks.includes(j.id);
+            const disabled = !selected && currentPicks.length >= 2;
+            return `<button onclick="smMobileToggleJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" ${disabled?'disabled':''}
+              style="position:relative;min-height:196px;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:0;overflow:hidden;opacity:${disabled?.45:1};text-align:left">
+              <div style="height:126px;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;color:#111;font-size:2rem">
+                ${smJokerVisualHtml(j)}
+                ${selected?'<div style="position:absolute;right:8px;top:8px;background:#ffd700;color:#111;border-radius:999px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:900">✓</div>':''}
+              </div>
+              <div style="padding:9px">
+                <div style="font-weight:900;font-size:.82rem;margin-bottom:4px;color:${selected?'#ffd700':'#fff'}">${smMobileEsc(j.name)}</div>
+                <div style="font-size:.68rem;color:#aaa;line-height:1.35">${smMobileEsc(j.desc)}</div>
+              </div>
+            </button>`;
+          }).join('')}
+        </div>
+        <button onclick="smMobileSubmitJokerPick('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}')" style="width:100%;border:none;border-radius:12px;background:${currentPicks.length===2?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${currentPicks.length===2?'':'disabled'}>
+          ${currentPicks.length===2?'✅ Auswahl geheim speichern':currentPicks.length+'/2 gewählt'}
+        </button>
+        <div style="font-size:.72rem;color:#777;text-align:center;margin-top:10px">Skip-Joker bekommst du automatisch gratis dazu.</div>`;
+      return;
+    }
+
+    const myJokers  = data.jokers?.[playerName] || [];
+    const myGoal    = data.secretGoals?.[playerName];
+    const achieved  = data.goalAchieved?.[playerName];
+    const scores    = data.scores || {};
+    const sorted    = players.length ? players.map(p=>([p.name, scores[p.name]||0])).sort((a,b)=>b[1]-a[1]) : Object.entries(scores).sort((a,b)=>b[1]-a[1]);
+    const currentIdx = typeof data.currentIdx === 'number' ? data.currentIdx : -1;
+    const currentGame = currentIdx >= 0 ? (data.plan || [])[currentIdx] : null;
+    const gameList  = data.games || [];
+    const curGame   = currentGame ? gameList.find(g=>g.id===currentGame.gameId) : null;
+    const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
+
+    c.innerHTML = `
+      ${curGame ? `<div style="background:#1a1a2e;border-radius:14px;padding:14px;margin-bottom:12px;border:1px solid rgba(255,215,0,.2)">
+        <div style="font-size:.65rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">▶️ Aktuelles Spiel</div>
+        <div style="font-weight:800;font-size:1rem;margin-bottom:4px">${smMobileEsc(curGame.name||'?')}</div>
+        <div style="font-size:.78rem;color:#888">${smMobileEsc(currentGame.rule||'')}</div>
+      </div>` : ''}
+      <div style="background:#1a1a2e;border-radius:14px;padding:14px;margin-bottom:12px">
+        <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📊 Punkte</div>
+        ${sorted.map(([name,pts],i)=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+          <span style="font-size:1.1rem;width:24px">${medals[i]||'#'+(i+1)}</span>
+          <span style="flex:1;font-weight:${name===playerName?'800':'500'};color:${name===playerName?'#ffd700':'#e0e0e0'};font-size:.9rem">${smMobileEsc(name)}${name===playerName?' 👈':''}</span>
+          <span style="font-weight:700;font-size:.95rem">${pts}</span>
+        </div>`).join('')}
+      </div>
+      ${myGoal ? `<div style="background:${achieved?'#0d2a1a':'#1a1a0d'};border:2px solid ${achieved?'#4ecdc4':'#ffd700'};border-radius:14px;padding:14px;margin-bottom:12px">
+        <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">🎯 Dein Geheimziel</div>
+        <div style="font-size:2rem;margin-bottom:8px">${smMobileEsc(myGoal.icon)}</div>
+        <div style="font-size:.88rem;line-height:1.6;white-space:pre-line;margin-bottom:8px">${smMobileEsc(myGoal.text)}</div>
+        <div style="font-size:.82rem;font-weight:700;color:${achieved?'#4ecdc4':'#ffd700'}">${achieved?'✅ Erfüllt! +'+myGoal.reward+' Punkte':'✨ Bei Erfolg: +'+myGoal.reward+' Punkte'}</div>
+      </div>` : ''}
+      <div style="background:#1a1a2e;border-radius:14px;padding:14px">
+        <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">🃏 Deine Joker</div>
+        ${myJokers.length ? myJokers.map(j=>{
+          const jd = defs.find(x=>x.id===j.id)||{icon:'🃏',name:j.id,desc:''};
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'}">
+            <span style="width:44px;height:58px;border-radius:8px;overflow:hidden;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;color:#111">${smJokerVisualHtml(jd,'1.6rem')}</span>
+            <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.88rem">${smMobileEsc(jd.name)}</div><div style="font-size:.72rem;color:#888;margin-top:2px">${j.used?'✓ Bereits genutzt':smMobileEsc(jd.desc)}</div></div>
+            ${!j.used&&j.id!=='underdog'?`<button onclick="fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>`: j.id==='underdog'?`<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>`:''}
+          </div>`;
+        }).join('') : '<div style="color:#888;font-size:.85rem;text-align:center;padding:12px">Warte auf Start...</div>'}
+      </div>
+      <div style="text-align:center;margin-top:14px;font-size:.7rem;color:#444">Aktualisiert automatisch in Echtzeit</div>`;
+  });
+};
+
+window.smMobileToggleJoker = function smMobileToggleJoker(sessionId, playerName, jokerId) {
+  const key = sessionId + playerName;
+  if (!window._mobilePicks) window._mobilePicks = {};
+  const picks = window._mobilePicks[key] || (window._mobilePicks[key] = []);
+  const idx = picks.indexOf(jokerId);
+  if (idx >= 0) picks.splice(idx,1);
+  else if (picks.length < 2) picks.push(jokerId);
+  // force a visual refresh by re-reading current firebase snapshot quickly
+  firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
+    const data = snap.val();
+    if (!data) return;
+    const event = new CustomEvent('sm-mobile-local-refresh', {detail:data});
+    document.dispatchEvent(event);
+  });
+  // Simpler: rerender on next Firebase tick by sending a lightweight draft too
+  const c = document.getElementById('mobile-content');
+  if (c) c.querySelector('button[onclick^="smMobileSubmitJokerPick"]')?.focus();
+  // Manual rerender without waiting: call renderMobilePlayerView listener isn't directly accessible, so update by pushing a draft to sessionStorage and reload hash view after 0 ms is avoided.
+  firebase.database().ref(`sessions/${sessionId}/mobileDrafts/${encodeURIComponent(playerName)}`).set({picks, ts:Date.now()}).catch(()=>{});
+};
+
+window.smMobileSubmitJokerPick = function smMobileSubmitJokerPick(sessionId, playerName) {
+  const key = sessionId + playerName;
+  const picks = (window._mobilePicks && window._mobilePicks[key]) || [];
+  if (picks.length !== 2) return;
+  firebase.database().ref(`sessions/${sessionId}/guestActions`).push({type:'jokerPick', playerName, picks, ts:Date.now()});
+  const c = document.getElementById('mobile-content');
+  if (c) c.insertAdjacentHTML('afterbegin', `<div style="background:#0d2a1a;border:1px solid #4ecdc4;color:#4ecdc4;border-radius:10px;padding:10px;margin-bottom:10px;text-align:center;font-weight:800">✅ Auswahl gesendet!</div>`);
+};
+
+// Make mobile local toggles visibly update by listening to the draft branch too.
+document.addEventListener('sm-mobile-local-refresh', e => {
+  const data = e.detail;
+  const hash = location.hash;
+  const m = hash.match(/session=([A-Z0-9-]+)&player=([^&]+)/);
+  if (!m) return;
+  // Trigger normal value listener by touching a harmless field is overkill; Firebase value listener will also fire from mobileDrafts.
 });
 </script>
 
