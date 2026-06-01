@@ -445,7 +445,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
     <div id="joker-pick-players"></div>
     <div style="text-align:center;margin-top:20px">
       <button class="btn btn-gold" style="padding:14px 48px;font-size:1rem;border-radius:12px" onclick="startSecretGoals()">
-        🎯 Weiter zu den Geheimzielen!
+        🚀 Marathon starten
       </button>
     </div>
   </div>
@@ -5256,6 +5256,112 @@ document.addEventListener('sm-mobile-local-refresh', e => {
       return oldFinish.apply(this, arguments);
     };
   }
+})();
+</script>
+
+
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  V39 FIX: no host-side secret-goal reveal; button starts marathon directly
+// ═══════════════════════════════════════════════════════════
+(function(){
+  function smV39CloseSecretGoalHostModals(){
+    ['modal-goal-handover','modal-secret-goal','modal-goal-review-warn','modal-goal-review'].forEach(id => {
+      try { closeModal(id); } catch(e) {}
+    });
+  }
+
+  function smV39BuildJokersFromPrivatePicks(){
+    state._vetoPenaltyApplied = state._vetoPenaltyApplied || {};
+    state.players.forEach(p => {
+      const picks = state.jokerPicks[p.name] || [];
+      state.jokers[p.name] = [...picks.map(id => ({id, used:false})), {id:'skip', used:false}];
+      if (picks.includes('veto') && !state._vetoPenaltyApplied[p.name]) {
+        state.scores[p.name] = (state.scores[p.name] || 0) - 3;
+        state._vetoPenaltyApplied[p.name] = true;
+        showToast(`🗳️ ${p.name} hat das Veto – startet mit -3 Punkten!`);
+      }
+    });
+  }
+
+  function smV39AssignSecretGoalsSilently(){
+    state.secretGoals = {};
+    state.secretGoalExtras = {};
+
+    const ffaCount = state.plan.filter(e => {
+      const g = state.games.find(g => g.id === e.gameId);
+      return g?.type === 'ffa';
+    }).length;
+    const silverTarget = getSilverTarget(ffaCount);
+
+    const coopCount = state.plan.filter(e => {
+      const g = state.games.find(g => g.id === e.gameId);
+      return g?.type === 'coop';
+    }).length;
+
+    const available = SECRET_GOALS.filter(g => {
+      if (g.id === 'sg_silber' && ffaCount < 3) return false;
+      if (g.id === 'sg_koop' && coopCount === 0) return false;
+      if (g.id === 'sg_riese' && state.plan.length < 4) return false;
+      return true;
+    });
+
+    const shuffledGoals = shuffle([...available]);
+    state.players.forEach((p, i) => {
+      const goal = shuffledGoals[i % shuffledGoals.length];
+      let displayText = goal.text;
+      let extra = {};
+
+      if (goal.id === 'sg_silber') {
+        displayText = `Beende mindestens ${silverTarget}x auf exakt Platz 2 in Jeder-gegen-Jeden-Spielen (Team- & Koop-Spiele zählen nicht). Heute sind ${ffaCount} Jeder-gegen-Jeden-Spiele geplant.`;
+        extra.silverTarget = silverTarget;
+      }
+      if (goal.id === 'sg_joker_meister') {
+        const picks = state.jokerPicks[p.name] || [];
+        const rules = picks.map(id => `• ${getJokerMeisterRule(id)}`).join('\n');
+        displayText = `Setze beide gewählten Joker sinnvoll ein:\n\n${rules}`;
+        extra.jokerResults = {};
+      }
+      if (goal.id === 'sg_schnitt') {
+        displayText = `Dein Durchschnitt pro Spiel liegt am Ende über 3 Punkten. (Wird am Ende angezeigt)`;
+      }
+
+      state.secretGoals[p.name] = {...goal, text: displayText};
+      state.secretGoalExtras[p.name] = extra;
+    });
+  }
+
+  window.startSecretGoals = function startSecretGoals(){
+    const missing = state.players.filter(p => (state.jokerPicks[p.name] || []).length < 2);
+    if (missing.length) {
+      showToast(`${missing.map(p => p.name).join(', ')} müssen noch 2 Joker wählen!`);
+      return;
+    }
+
+    smV39CloseSecretGoalHostModals();
+    smV39BuildJokersFromPrivatePicks();
+    smV39AssignSecretGoalsSilently();
+
+    state._setupPhase = 'marathon';
+    state._marathonStarted = true;
+
+    if (typeof fbPushState === 'function' && fbIsHost) {
+      fbPushState();
+      showToast('🎯 Geheimziele wurden privat an die Handys gesendet. Marathon startet!');
+    } else {
+      showToast('🚀 Marathon startet!');
+    }
+
+    _finishSetupAndStart();
+  };
+
+  window.smStartMarathonAfterPrivateGoals = window.startSecretGoals;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('button[onclick="startSecretGoals()"], button[onclick="smStartMarathonAfterPrivateGoals()"]')
+      .forEach(btn => { btn.innerHTML = '🚀 Marathon starten'; btn.setAttribute('onclick','startSecretGoals()'); });
+  });
 })();
 </script>
 
