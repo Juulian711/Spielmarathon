@@ -3598,6 +3598,7 @@ function openGameLibraryModalOld() {
 
 let gameLibraryActiveTab = 'games';
 let gameLibrarySearchQuery = '';
+let expandedGameCategories = new Set();
 
 function gameMatchesLibrarySearch(g, query) {
   const q = String(query || '').trim().toLowerCase();
@@ -3621,6 +3622,12 @@ function gameMatchesLibrarySearch(g, query) {
 function onGameLibrarySearch(value) {
   gameLibrarySearchQuery = value || '';
   openGameLibraryModal('games');
+}
+
+function toggleGameCategoryExpanded(id) {
+  if (expandedGameCategories.has(id)) expandedGameCategories.delete(id);
+  else expandedGameCategories.add(id);
+  openGameLibraryModal('categories');
 }
 
 function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
@@ -3706,6 +3713,54 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
 }
 
 function renderCategoryLibrary(c, tabs) {
+  const categoryRows = (state.gameCategories || []).slice().sort((a,b)=>a.name.localeCompare(b.name, 'de')).map(cat => {
+    const games = state.games.filter(g => getGameCategoryId(g) === cat.id)
+      .sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), 'de'));
+    const count = games.length;
+    const limit = parseInt(cat.limit, 10) > 0 ? parseInt(cat.limit, 10) : 'kein Limit';
+    const expanded = expandedGameCategories.has(cat.id);
+    const gameRows = games.length
+      ? games.map(g => {
+          const durLabel = g.minDur && g.minDur !== g.dur ? g.minDur + '-' + g.dur : g.dur;
+          const active = g.enabled === false ? 'deaktiviert' : 'aktiv';
+          return '<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:10px;align-items:center;padding:7px 10px;border-radius:7px;background:rgba(255,255,255,.03);margin-top:6px">'
+            + '<span style="font-weight:600">' + esc(g.name) + '</span>'
+            + '<span class="badge" style="background:rgba(255,255,255,.08);color:var(--text)">' + esc(TYPE_SHORT[g.type] || g.type || '-') + '</span>'
+            + '<span style="color:var(--muted);font-size:.78rem">' + esc(durLabel) + 'min</span>'
+            + '<span style="font-size:.72rem;color:' + (g.enabled === false ? 'var(--accent)' : 'var(--green)') + '">' + active + '</span>'
+            + '</div>';
+        }).join('')
+      : '<div style="padding:10px;color:var(--muted);font-size:.84rem;background:rgba(255,255,255,.03);border-radius:7px">Keine Spiele zugeordnet.</div>';
+    return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)">'
+      + '<td style="padding:8px;font-weight:700;cursor:pointer" onclick="toggleGameCategoryExpanded(\'' + cat.id + '\')">'
+      + '<span style="display:inline-flex;align-items:center;gap:8px"><span style="color:var(--muted);font-size:.85rem">' + (expanded ? 'v' : '>') + '</span>' + esc(cat.name) + '</span></td>'
+      + '<td style="padding:8px;color:var(--muted)">' + limit + '</td>'
+      + '<td style="padding:8px;color:var(--muted)">' + count + '</td>'
+      + '<td style="padding:8px;display:flex;gap:4px">'
+      + '<button class="btn btn-secondary btn-icon btn-sm" onclick="editGameCategory(\'' + cat.id + '\')" title="Bearbeiten">Bearbeiten</button>'
+      + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGameCategory(\'' + cat.id + '\')" title="Loeschen">Loeschen</button>'
+      + '</td></tr>'
+      + (expanded
+        ? '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td colspan="4" style="padding:4px 8px 12px 34px">'
+          + '<div style="border-left:2px solid rgba(233,69,96,.35);padding-left:12px">' + gameRows + '</div>'
+          + '</td></tr>'
+        : '');
+  }).join('');
+
+  c.innerHTML = tabs
+    + '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;margin-bottom:12px;background:var(--surface);border-radius:8px;padding:10px">'
+    + '<input type="text" id="cat-new-name" placeholder="Neue Oberkategorie, z.B. UNO"/>'
+    + '<input type="number" id="cat-new-limit" min="0" placeholder="Limit leer/0 = unbegrenzt"/>'
+    + '<button class="btn btn-primary btn-sm" onclick="addGameCategoryFromLibrary()">Hinzufuegen</button>'
+    + '</div>'
+    + '<p style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Leeres Limit oder 0 bedeutet: kein Limit. Beim Loeschen bleiben Spiele erhalten und verlieren nur ihre Zuordnung.</p>'
+    + (categoryRows
+      ? '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
+        + '<th style="text-align:left;padding:6px 8px">Name</th><th style="text-align:left;padding:6px 8px">Max. pro Marathon</th><th style="text-align:left;padding:6px 8px">Spiele</th><th></th>'
+        + '</tr></thead><tbody>' + categoryRows + '</tbody></table>'
+      : '<div class="empty-state"><div class="icon">📁</div><p>Noch keine Oberkategorien</p></div>');
+  return;
+
   const rows = (state.gameCategories || []).slice().sort((a,b)=>a.name.localeCompare(b.name, 'de')).map(cat => {
     const count = state.games.filter(g => getGameCategoryId(g) === cat.id).length;
     const limit = parseInt(cat.limit, 10) > 0 ? parseInt(cat.limit, 10) : 'kein Limit';
@@ -3762,6 +3817,7 @@ function deleteGameCategory(id) {
   const cat = getCategoryById(id);
   if (!cat) return;
   showConfirm('Oberkategorie loeschen?', 'Spiele werden nicht geloescht, sondern verlieren nur diese Zuordnung.', () => {
+    expandedGameCategories.delete(id);
     state.gameCategories = state.gameCategories.filter(c => c.id !== id);
     state.games.forEach(g => {
       if (getGameCategoryId(g) === id) {
