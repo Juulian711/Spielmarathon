@@ -102,6 +102,10 @@ header::before{content:'';position:absolute;inset:0;background:radial-gradient(e
 .tab:hover:not(.active){background:rgba(255,255,255,.08);color:var(--text)}
 .tab-content{display:none;padding-top:20px}
 .tab-content.active{display:block}
+.library-tabs{display:flex;gap:4px;background:var(--surface);border-radius:10px;padding:4px;margin-bottom:14px;flex-wrap:wrap}
+.library-tab{flex:1;min-width:120px;padding:8px 10px;border:none;background:transparent;color:var(--muted);font-size:.82rem;font-weight:700;border-radius:7px;cursor:pointer;transition:var(--transition);text-align:center}
+.library-tab.active{background:var(--accent);color:#fff}
+.library-tab:hover:not(.active){background:rgba(255,255,255,.08);color:var(--text)}
 
 /* INPUTS */
 label{font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px}
@@ -592,6 +596,20 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
         <option value="3v1">1 gegen Alle</option>
         <option value="coop">Kooperativ</option>
       </select>
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Oberkategorie / Spielreihe</label>
+      <select id="mg-category"></select>
+      <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Optional. Kategorien mit leerem oder 0-Limit sind unbegrenzt.</p>
+    </div>
+    <div class="form-group">
+      <label>Neue Oberkategorie direkt anlegen</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="mg-new-category" placeholder="z.B. UNO" onkeydown="if(event.key==='Enter'){event.preventDefault();createCategoryFromGameModal()}"/>
+        <button class="btn btn-secondary btn-sm" onclick="createCategoryFromGameModal()" style="flex-shrink:0">Anlegen</button>
+      </div>
     </div>
   </div>
   <div class="form-row">
@@ -1102,6 +1120,7 @@ let pts = JSON.parse(JSON.stringify(DEFAULT_POINTS));
 let state = {
   players:[],
   games:[],
+  gameCategories:[],
   plan:[],
   currentIdx:-1,
   scores:{},
@@ -1245,6 +1264,7 @@ function buildSessionSnapshot(name, finalize=false) {
     timeLimit: state.timeLimit,
     startTime: state.startTime,
     games: state.games,
+    gameCategories: state.gameCategories || [],
     setupPhase: state._setupPhase || null,
     marathonStarted: !!state._marathonStarted,
     marathonFinished: !!state._marathonFinished
@@ -1258,16 +1278,18 @@ function getVetoEligibleGameCount(source = state) {
   const previewOrder = source.previewOrder || [];
   if (plan.length) return plan.length;
   if (previewOrder.length) {
-    return previewOrder.filter(id => {
-      const g = games.find(g => g.id === id);
-      return g && g.enabled !== false && g.minP <= players.length && g.maxP >= players.length;
-    }).length;
+    const previewGames = previewOrder.map(id => games.find(g => g.id === id)).filter(Boolean);
+    return applyCategoryLimits(previewGames.filter(g =>
+      g.enabled !== false &&
+      g.minP <= players.length &&
+      g.maxP >= players.length
+    )).length;
   }
-  return games.filter(g =>
+  return applyCategoryLimits(games.filter(g =>
     g.enabled !== false &&
     g.minP <= players.length &&
     g.maxP >= players.length
-  ).length;
+  )).length;
 }
 
 function canPickVetoJoker(source = state) {
@@ -1383,11 +1405,98 @@ function updateGameFilterNote() {
 // ═══════════════════════════════════════════════════════════
 //  GAMES
 // ═══════════════════════════════════════════════════════════
+function normalizeGameCategories() {
+  if (!Array.isArray(state.gameCategories)) state.gameCategories = [];
+  state.gameCategories = state.gameCategories
+    .filter(c => c && c.id && c.name)
+    .map(c => ({id:String(c.id), name:String(c.name), limit:c.limit === undefined ? '' : c.limit}));
+
+  const validIds = new Set(state.gameCategories.map(c => c.id));
+  if (!Array.isArray(state.games)) state.games = [];
+  state.games.forEach(g => {
+    const cid = g.categoryId || g.seriesId || '';
+    g.categoryId = validIds.has(cid) ? cid : '';
+  });
+}
+
+function getGameCategoryId(g) {
+  return g ? (g.categoryId || g.seriesId || '') : '';
+}
+
+function getCategoryById(id) {
+  return (state.gameCategories || []).find(c => c.id === id) || null;
+}
+
+function getCategoryName(id) {
+  return getCategoryById(id)?.name || '';
+}
+
+function getCategoryLimit(id) {
+  const c = getCategoryById(id);
+  const n = parseInt(c?.limit, 10);
+  return n > 0 ? n : null;
+}
+
+function applyCategoryLimits(games, existingPlanEntries = []) {
+  const counts = {};
+  existingPlanEntries.forEach(e => {
+    const g = state.games.find(x => x.id === e.gameId);
+    const cid = getGameCategoryId(g);
+    if (cid) counts[cid] = (counts[cid] || 0) + 1;
+  });
+  return games.filter(g => {
+    const cid = getGameCategoryId(g);
+    if (!cid) return true;
+    const limit = getCategoryLimit(cid);
+    if (!limit) return true;
+    const used = counts[cid] || 0;
+    if (used >= limit) return false;
+    counts[cid] = used + 1;
+    return true;
+  });
+}
+
+function renderGameCategorySelect(selectedId = '') {
+  const sel = document.getElementById('mg-category');
+  if (!sel) return;
+  normalizeGameCategories();
+  sel.innerHTML = '<option value="">Keine Oberkategorie</option>' +
+    state.gameCategories
+      .slice()
+      .sort((a,b) => a.name.localeCompare(b.name, 'de'))
+      .map(c => '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>')
+      .join('');
+  sel.value = selectedId || '';
+}
+
+function createGameCategory(name, limit = '') {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) return null;
+  normalizeGameCategories();
+  const existing = state.gameCategories.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+  if (existing) return existing;
+  const cat = {id:uid(), name:cleanName, limit:limit === undefined ? '' : limit};
+  state.gameCategories.push(cat);
+  saveLS();
+  return cat;
+}
+
+function createCategoryFromGameModal() {
+  const inp = document.getElementById('mg-new-category');
+  const cat = createGameCategory(inp?.value || '');
+  if (!cat) { showToast('Bitte einen Kategorienamen eingeben!'); return; }
+  if (inp) inp.value = '';
+  renderGameCategorySelect(cat.id);
+  showToast('Oberkategorie angelegt');
+}
+
 function openAddGameModal(editId = null) {
   state.editGameId = editId;
   coverDataUrl = '';
+  normalizeGameCategories();
   document.getElementById('modal-game-title').textContent = editId ? '✏️ Spiel bearbeiten' : '➕ Spiel hinzufügen';
   document.getElementById('mg-cover-url').value = '';
+  document.getElementById('mg-new-category').value = '';
   document.getElementById('mg-cover-preview').style.display = 'none';
   document.getElementById('mg-cover-preview').src = '';
   document.getElementById('cover-upload-area').classList.remove('has-img');
@@ -1404,6 +1513,7 @@ function openAddGameModal(editId = null) {
     document.getElementById('mg-coop-slots').value = g.coopSlots || 3;
     document.getElementById('mg-win-condition').value = g.winCondition || 'all';
     document.getElementById('mg-ties-allowed').checked = !!g.tiesAllowed;
+    renderGameCategorySelect(getGameCategoryId(g));
     if (g.coverImg) {
       coverDataUrl = g.coverImg;
       const prev = document.getElementById('mg-cover-preview');
@@ -1422,6 +1532,7 @@ function openAddGameModal(editId = null) {
     document.getElementById('mg-coop-slots').value = 3;
     document.getElementById('mg-win-condition').value = 'all';
     document.getElementById('mg-ties-allowed').checked = false;
+    renderGameCategorySelect('');
     renderModalRules([]);
   }
   onGameTypeChange();
@@ -1489,15 +1600,16 @@ function saveGame() {
   const coopSlots = type === 'coop' ? (parseInt(document.getElementById('mg-coop-slots').value) || 3) : 1;
   const winCondition = document.getElementById('mg-win-condition').value;
   const tiesAllowed  = document.getElementById('mg-ties-allowed').checked;
+  const categoryId = document.getElementById('mg-category')?.value || '';
   if (!name) { showToast('Bitte einen Spielnamen eingeben!'); return; }
   if (minP > maxP) { showToast('Min. Spieler darf nicht größer als Max. sein!'); return; }
   if (!modalRules.length) modalRules.push('Macht den entscheidenden letzten Zug');
 
   if (state.editGameId) {
     const g = state.games.find(g => g.id === state.editGameId);
-    Object.assign(g, {name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed});
+    Object.assign(g, {name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed, categoryId});
   } else {
-    state.games.push({id: uid(), name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed});
+    state.games.push({id: uid(), name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed, categoryId});
   }
   closeModal('modal-add-game');
   renderGameListSetup();
@@ -1549,7 +1661,7 @@ function generateAndShowPlan() {
     showToast(n > 0 ? 'Keine aktivierten Spiele für diese Spielerzahl!' : 'Keine aktivierten Spiele in der Bibliothek!');
     return;
   }
-  const shuffled = shuffle(compatible);
+  const shuffled = applyCategoryLimits(shuffle(compatible));
   // Save this order so marathon uses the same sequence
   state.previewOrder = shuffled.map(g => g.id);
 
@@ -1608,7 +1720,7 @@ function showRandomOrderPreview() {
   const n = state.players.length;
   const compatible = n > 0 ? state.games.filter(g => g.minP <= n && g.maxP >= n) : state.games;
   if (!compatible.length) { showToast('Keine Spiele in der Bibliothek!'); return; }
-  const shuffled = shuffle(compatible);
+  const shuffled = applyCategoryLimits(shuffle(compatible));
   // Show in a toast-style modal
   document.getElementById('confirm-title').textContent = '🔀 Zufällige Spielreihenfolge';
   document.getElementById('confirm-msg').textContent = shuffled.map((g,i)=>`${i+1}. ${g.name}`).join(' → ');
@@ -2043,6 +2155,7 @@ function buildPlan() {
   } else {
     pool = shuffle(getCompatibleGames()); // getCompatibleGames already filters enabled
   }
+  pool = applyCategoryLimits(pool);
   if (state.timeLimit > 0) {
     let total = 0;
     pool = pool.filter(g => {
@@ -2710,7 +2823,7 @@ function confirmJoker() {
 
     // Find a compatible, enabled, unplayed game not already in the plan
     const plannedIds = new Set(state.plan.map(e=>e.gameId));
-    const compatible = getCompatibleGames().filter(g => !plannedIds.has(g.id));
+    const compatible = applyCategoryLimits(getCompatibleGames().filter(g => !plannedIds.has(g.id)), state.plan);
     if (compatible.length) {
       const bonus = pickRandom(compatible);
       // Insert right after current position (not at end)
@@ -2969,6 +3082,8 @@ function loadSession(id) {
   state._marathonFinished = !!s.marathonFinished;
   state._vetoFromEndScreen = false;
   if (s.games) state.games = s.games;
+  if (s.gameCategories) state.gameCategories = s.gameCategories;
+  normalizeGameCategories();
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
     showScreen('screen-joker-pick');
     renderJokerPickScreen();
@@ -3346,6 +3461,7 @@ function renderAll() {
 function saveLS() {
   try {
     localStorage.setItem('sm_games_v2', JSON.stringify(state.games));
+    localStorage.setItem('sm_game_categories_v1', JSON.stringify(state.gameCategories || []));
     localStorage.setItem('sm_players_v2', JSON.stringify(state.players));
     localStorage.setItem('sm_pts_v2', JSON.stringify(pts));
     localStorage.setItem('sm_joker_defs', JSON.stringify(JOKER_DEFS));
@@ -3361,6 +3477,7 @@ function saveCurrentToLS() {
     history:state.history, plan:state.plan, currentIdx:state.currentIdx,
     jokers:state.jokers, timeLimit:state.timeLimit, startTime:state.startTime,
     games:state.games, jokerPicks:state.jokerPicks, skipped:state.skipped,
+    gameCategories:state.gameCategories || [],
     secretGoals:state.secretGoals, secretGoalExtras:state.secretGoalExtras, comebackGiven:state.comebackGiven, goalAchieved:state.goalAchieved, giftedJokers:state.giftedJokers,
     setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
   };
@@ -3372,6 +3489,8 @@ function loadLS() {
   try {
     const g = localStorage.getItem('sm_games_v2');
     if (g) state.games = JSON.parse(g);
+    const cats = localStorage.getItem('sm_game_categories_v1');
+    if (cats) state.gameCategories = JSON.parse(cats);
     const p = localStorage.getItem('sm_players_v2');
     if (p) state.players = JSON.parse(p);
     const pt = localStorage.getItem('sm_pts_v2');
@@ -3392,6 +3511,7 @@ function loadLS() {
     }
     const ce = localStorage.getItem('sm_custom_events');
     if (ce) state.customEvents = JSON.parse(ce);
+    normalizeGameCategories();
   } catch {}
 }
 
@@ -3413,7 +3533,8 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 // ═══════════════════════════════════════════════════════════
 //  GAME LIBRARY OVERVIEW
 // ═══════════════════════════════════════════════════════════
-function openGameLibraryModal() {
+function openGameLibraryModalOld() {
+  return openGameLibraryModal(...arguments);
   const c = document.getElementById('game-library-list');
   const TYPE_BADGE = {ffa:'JgJ','2v2':'TvT','3v1':'1vAll',coop:'Koop'};
   const TYPE_CLS   = {ffa:'badge-ffa','2v2':'badge-2v2','3v1':'badge-3v1',coop:'badge-coop'};
@@ -3425,7 +3546,8 @@ function openGameLibraryModal() {
   if (!state.games.length) {
     c.innerHTML = '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
   } else {
-    const rows = state.games.map((g,i) => {
+    const filteredGames = state.games.filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery));
+    const rows = filteredGames.map((g,i) => {
       const cover = g.coverImg
         ? '<img src="' + esc(g.coverImg) + '" style="width:32px;height:32px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'">'
         : '<span style="font-size:1.2rem">🎲</span>';
@@ -3456,12 +3578,201 @@ function openGameLibraryModal() {
       + '<th style="text-align:left;padding:6px 8px">Spieler</th><th style="text-align:left;padding:6px 8px">Dauer</th><th></th>'
       + '</tr></thead><tbody>' + rows + '</tbody></table>';
 
-    const allEnabled = state.games.every(g=>g.enabled!==false);
-    const noneEnabled = state.games.every(g=>g.enabled===false);
+    if (!filteredGames.length) {
+      c.innerHTML = tabs + searchBar + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
+    }
+    const allEnabled = filteredGames.length && filteredGames.every(g=>g.enabled!==false);
+    const noneEnabled = filteredGames.length && filteredGames.every(g=>g.enabled===false);
     const cb = document.getElementById('select-all-games');
-    if(cb){ cb.checked=allEnabled; cb.indeterminate=!allEnabled&&!noneEnabled; }
+    if(cb){ cb.checked=!!allEnabled; cb.indeterminate=filteredGames.length && !allEnabled&&!noneEnabled; }
   }
   openModal('modal-game-library');
+  setTimeout(() => {
+    const search = document.getElementById('game-library-search');
+    if (!search) return;
+    search.focus();
+    const pos = search.value.length;
+    try { search.setSelectionRange(pos, pos); } catch {}
+  }, 0);
+}
+
+let gameLibraryActiveTab = 'games';
+let gameLibrarySearchQuery = '';
+
+function gameMatchesLibrarySearch(g, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  const typeLabel = TYPE_LABELS[g.type] || TYPE_SHORT[g.type] || g.type || '';
+  const categoryName = getCategoryName(getGameCategoryId(g));
+  const haystack = [
+    g.name,
+    g.dev,
+    categoryName,
+    typeLabel,
+    g.type,
+    g.minP,
+    g.maxP,
+    g.dur,
+    g.minDur
+  ].map(v => String(v || '').toLowerCase()).join(' ');
+  return haystack.includes(q);
+}
+
+function onGameLibrarySearch(value) {
+  gameLibrarySearchQuery = value || '';
+  openGameLibraryModal('games');
+}
+
+function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
+  gameLibraryActiveTab = tab;
+  normalizeGameCategories();
+  const c = document.getElementById('game-library-list');
+  const p = document.querySelector('#modal-game-library .modal > p');
+  if (p) p.innerHTML = state.games.length + ' Spiel' + (state.games.length!==1?'e':'') + ' gespeichert. &nbsp;'
+    + '<button class="btn btn-secondary btn-sm" onclick="exportGames()" style="margin-right:4px">Exportieren</button>'
+    + '<button class="btn btn-secondary btn-sm" onclick="importGamesClick()">Importieren</button>'
+    + '<input type="file" id="import-games-file" accept=".json" style="display:none" onchange="importGamesFile(event)"/>';
+
+  const tabs = '<div class="library-tabs">'
+    + '<button class="library-tab ' + (tab === 'games' ? 'active' : '') + '" onclick="openGameLibraryModal(\'games\')">Spiele</button>'
+    + '<button class="library-tab ' + (tab === 'categories' ? 'active' : '') + '" onclick="openGameLibraryModal(\'categories\')">Oberkategorien</button>'
+    + '</div>';
+
+  if (tab === 'categories') {
+    renderCategoryLibrary(c, tabs);
+    openModal('modal-game-library');
+    return;
+  }
+
+  const TYPE_BADGE = {ffa:'JgJ','2v2':'TvT','3v1':'1vAll',coop:'Koop'};
+  const TYPE_CLS = {ffa:'badge-ffa','2v2':'badge-2v2','3v1':'badge-3v1',coop:'badge-coop'};
+  const searchBar = '<div style="margin-bottom:12px;background:var(--surface);border-radius:8px;padding:10px">'
+    + '<label for="game-library-search" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Spiele suchen</label>'
+    + '<input type="text" id="game-library-search" placeholder="Name, Verlag, Kategorie, Typ..." value="' + esc(gameLibrarySearchQuery) + '" oninput="onGameLibrarySearch(this.value)"/>'
+    + '</div>';
+  if (!state.games.length) {
+    c.innerHTML = tabs + '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
+  } else {
+    const filteredGames = state.games.filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery));
+    const rows = filteredGames.map((g,i) => {
+      const cover = g.coverImg
+        ? '<img src="' + esc(g.coverImg) + '" style="width:32px;height:32px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'">'
+        : '<span style="font-size:1.2rem">🎲</span>';
+      const devLine = g.dev ? '<div style="font-size:.72rem;color:var(--muted)">' + esc(g.dev) + '</div>' : '';
+      const durLabel = g.minDur && g.minDur !== g.dur ? g.minDur + '-' + g.dur : g.dur;
+      const categoryLabel = getCategoryName(getGameCategoryId(g)) || '-';
+      const rowStyle = 'border-bottom:1px solid rgba(255,255,255,.05);transition:.15s;' + (g.enabled===false?'opacity:.45':'');
+      return '<tr style="' + rowStyle + '">'
+        + '<td style="padding:8px;text-align:center"><input type="checkbox" ' + (g.enabled!==false?'checked':'') + ' style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleGameEnabled(\'' + g.id + '\',this.checked)"/></td>'
+        + '<td style="padding:8px;color:var(--muted);font-weight:700">' + (i+1) + '</td>'
+        + '<td style="padding:8px"><div style="display:flex;align-items:center;gap:8px">' + cover + '<div><div style="font-weight:600">' + esc(g.name) + '</div>' + devLine + '</div></div></td>'
+        + '<td style="padding:8px"><span class="badge ' + TYPE_CLS[g.type] + '">' + TYPE_BADGE[g.type] + '</span></td>'
+        + '<td style="padding:8px;color:var(--muted)">' + esc(categoryLabel) + '</td>'
+        + '<td style="padding:8px;color:var(--muted)">👥 ' + g.minP + '-' + g.maxP + '</td>'
+        + '<td style="padding:8px;color:var(--muted)">' + durLabel + 'min</td>'
+        + '<td style="padding:8px;display:flex;gap:4px">'
+        + '<button class="btn btn-secondary btn-icon btn-sm" onclick="closeModal(\'modal-game-library\');openAddGameModal(\'' + g.id + '\')" title="Bearbeiten">✏️</button>'
+        + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGame(\'' + g.id + '\');openGameLibraryModal(\'games\')" title="Loeschen">🗑️</button>'
+        + '</td></tr>';
+    }).join('');
+
+    c.innerHTML = tabs + searchBar
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--surface);border-radius:8px">'
+      + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;font-weight:600">'
+      + '<input type="checkbox" id="select-all-games" style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleVisibleGames(this.checked)"/> Sichtbare auswaehlen / abwaehlen</label>'
+      + '<span style="font-size:.75rem;color:var(--muted);margin-left:auto">' + filteredGames.length + ' von ' + state.games.length + ' Spielen sichtbar</span></div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:.85rem">'
+      + '<thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
+      + '<th style="padding:6px 8px">Aktiv</th><th style="text-align:left;padding:6px 8px">#</th><th style="text-align:left;padding:6px 8px">Spiel</th>'
+      + '<th style="text-align:left;padding:6px 8px">Typ</th><th style="text-align:left;padding:6px 8px">Kategorie</th><th style="text-align:left;padding:6px 8px">Spieler</th><th style="text-align:left;padding:6px 8px">Dauer</th><th></th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table>';
+
+    if (!filteredGames.length) {
+      c.innerHTML = tabs + searchBar + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
+    }
+    const allEnabled = filteredGames.length && filteredGames.every(g=>g.enabled!==false);
+    const noneEnabled = filteredGames.length && filteredGames.every(g=>g.enabled===false);
+    const cb = document.getElementById('select-all-games');
+    if(cb){ cb.checked=!!allEnabled; cb.indeterminate=filteredGames.length && !allEnabled&&!noneEnabled; }
+  }
+  openModal('modal-game-library');
+  setTimeout(() => {
+    const search = document.getElementById('game-library-search');
+    if (!search) return;
+    search.focus();
+    const pos = search.value.length;
+    try { search.setSelectionRange(pos, pos); } catch {}
+  }, 0);
+}
+
+function renderCategoryLibrary(c, tabs) {
+  const rows = (state.gameCategories || []).slice().sort((a,b)=>a.name.localeCompare(b.name, 'de')).map(cat => {
+    const count = state.games.filter(g => getGameCategoryId(g) === cat.id).length;
+    const limit = parseInt(cat.limit, 10) > 0 ? parseInt(cat.limit, 10) : 'kein Limit';
+    return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)">'
+      + '<td style="padding:8px;font-weight:700">' + esc(cat.name) + '</td>'
+      + '<td style="padding:8px;color:var(--muted)">' + limit + '</td>'
+      + '<td style="padding:8px;color:var(--muted)">' + count + '</td>'
+      + '<td style="padding:8px;display:flex;gap:4px">'
+      + '<button class="btn btn-secondary btn-icon btn-sm" onclick="editGameCategory(\'' + cat.id + '\')" title="Bearbeiten">✏️</button>'
+      + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGameCategory(\'' + cat.id + '\')" title="Loeschen">🗑️</button>'
+      + '</td></tr>';
+  }).join('');
+
+  c.innerHTML = tabs
+    + '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;margin-bottom:12px;background:var(--surface);border-radius:8px;padding:10px">'
+    + '<input type="text" id="cat-new-name" placeholder="Neue Oberkategorie, z.B. UNO"/>'
+    + '<input type="number" id="cat-new-limit" min="0" placeholder="Limit leer/0 = unbegrenzt"/>'
+    + '<button class="btn btn-primary btn-sm" onclick="addGameCategoryFromLibrary()">Hinzufuegen</button>'
+    + '</div>'
+    + '<p style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Leeres Limit oder 0 bedeutet: kein Limit. Beim Loeschen bleiben Spiele erhalten und verlieren nur ihre Zuordnung.</p>'
+    + (rows
+      ? '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
+        + '<th style="text-align:left;padding:6px 8px">Name</th><th style="text-align:left;padding:6px 8px">Max. pro Marathon</th><th style="text-align:left;padding:6px 8px">Spiele</th><th></th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div class="empty-state"><div class="icon">📁</div><p>Noch keine Oberkategorien</p></div>');
+}
+
+function addGameCategoryFromLibrary() {
+  const name = document.getElementById('cat-new-name')?.value || '';
+  const limitRaw = document.getElementById('cat-new-limit')?.value || '';
+  const limit = parseInt(limitRaw, 10) > 0 ? parseInt(limitRaw, 10) : '';
+  const cat = createGameCategory(name, limit);
+  if (!cat) { showToast('Bitte einen Kategorienamen eingeben!'); return; }
+  openGameLibraryModal('categories');
+}
+
+function editGameCategory(id) {
+  const cat = getCategoryById(id);
+  if (!cat) return;
+  const name = prompt('Name der Oberkategorie', cat.name);
+  if (name === null) return;
+  const cleanName = name.trim();
+  if (!cleanName) { showToast('Name darf nicht leer sein!'); return; }
+  const limitInput = prompt('Maximal im Marathon (leer oder 0 = kein Limit)', cat.limit || '');
+  if (limitInput === null) return;
+  cat.name = cleanName;
+  cat.limit = parseInt(limitInput, 10) > 0 ? parseInt(limitInput, 10) : '';
+  saveLS();
+  openGameLibraryModal('categories');
+  showToast('Oberkategorie aktualisiert');
+}
+
+function deleteGameCategory(id) {
+  const cat = getCategoryById(id);
+  if (!cat) return;
+  showConfirm('Oberkategorie loeschen?', 'Spiele werden nicht geloescht, sondern verlieren nur diese Zuordnung.', () => {
+    state.gameCategories = state.gameCategories.filter(c => c.id !== id);
+    state.games.forEach(g => {
+      if (getGameCategoryId(g) === id) {
+        g.categoryId = '';
+        if (g.seriesId) g.seriesId = '';
+      }
+    });
+    saveLS();
+    openGameLibraryModal('categories');
+    showToast('Oberkategorie geloescht');
+  });
 }
 
 function exportGames() {
@@ -3495,6 +3806,7 @@ function importGamesFile(event) {
           added++;
         }
       });
+      normalizeGameCategories();
       saveLS();
       updateGameCountBadge();
       openGameLibraryModal();
@@ -3654,6 +3966,14 @@ function toggleAllGames(enabled) {
   state.games.forEach(g=>g.enabled=enabled);
   saveLS();
   openGameLibraryModal(); // re-render
+}
+
+function toggleVisibleGames(enabled) {
+  state.games
+    .filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery))
+    .forEach(g => g.enabled = enabled);
+  saveLS();
+  openGameLibraryModal('games');
 }
 
 // ── Veto auto-trigger one game before end ─────────────────
@@ -4639,7 +4959,7 @@ function fbPushState() {
   });
   // Strip coverImg from games (too large for Firebase) — mobile only needs name/type/id
   const cleanGames = (state.games||[]).map(g=>({
-    id:g.id, name:g.name, type:g.type, dur:g.dur, minP:g.minP, maxP:g.maxP
+    id:g.id, name:g.name, type:g.type, dur:g.dur, minP:g.minP, maxP:g.maxP, categoryId:g.categoryId || ''
   }));
   const data = {
     players:        state.players,
@@ -5121,7 +5441,7 @@ window.fbPushState = function fbPushState() {
     cleanGoals[name] = { id: goal.id, icon: goal.icon, text: goal.text, reward: goal.reward, endOnly: goal.endOnly };
   });
   const cleanGames = (state.games||[]).map(g=>({
-    id:g.id, name:g.name, type:g.type, dur:g.dur, minP:g.minP, maxP:g.maxP
+    id:g.id, name:g.name, type:g.type, dur:g.dur, minP:g.minP, maxP:g.maxP, categoryId:g.categoryId || ''
   }));
   const data = {
     players: state.players,
