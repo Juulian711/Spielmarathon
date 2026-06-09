@@ -382,8 +382,6 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   <div class="header-actions">
     <button class="btn btn-ghost btn-sm" id="btn-home" onclick="goHome()" style="display:none">🏠 Home</button>
     <button class="btn btn-ghost btn-sm" id="btn-save-session" onclick="openSaveModal()" style="display:none">💾 Speichern</button>
-    <button class="btn btn-ghost btn-sm" id="btn-qr" onclick="openQRModal()" style="display:none">📱 QR</button>
-    <button class="btn btn-ghost btn-sm" onclick="openTournamentHistory()">🏆 Turniere</button>
     <button class="btn btn-primary btn-sm" onclick="openSettingsModal()">⚙️ Einstellungen</button>
   </div>
 </header>
@@ -412,7 +410,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
           <label>Marathon-Modus</label>
           <select id="marathon-mode" onchange="updateMarathonMode(this.value)">
             <option value="random">Komplett zufälliger Spielplan</option>
-            <option value="marioKart">Spielauswahl wie Mario Kart</option>
+            <option value="marioKart">Spielwahl-Roulette</option>
           </select>
         </div>
       </div>
@@ -426,6 +424,12 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
         <div id="saved-sessions-list">
           <div class="empty-state" style="padding:16px"><div class="icon">📂</div><p>Keine gespeicherten Sessions</p></div>
         </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-title">🏆 Turnier-Archiv</div>
+        <p style="font-size:.85rem;color:var(--muted);line-height:1.5;margin-bottom:12px">Abgeschlossene Spielabende ansehen, Ergebnisse vergleichen und alte Verläufe öffnen.</p>
+        <button class="btn btn-gold" onclick="openTournamentHistory()" style="width:100%">Alte Turniere ansehen</button>
       </div>
     </div>
 
@@ -1181,7 +1185,6 @@ function showScreen(id) {
   const inPick = id === 'screen-joker-pick';
   document.getElementById('btn-home').style.display = (inMarathon || inPick) ? '' : 'none';
   document.getElementById('btn-save-session').style.display = inMarathon ? '' : 'none';
-  document.getElementById('btn-qr').style.display = inMarathon ? '' : 'none';
 }
 
 function resetMarathonRuntime(options = {}) {
@@ -2436,7 +2439,7 @@ function renderGameVoteHost() {
 
   info.innerHTML = `
     <div style="text-align:center;padding:10px 0">
-      <div style="font-size:.72rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Mario-Kart-Modus</div>
+      <div style="font-size:.72rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Spielwahl-Roulette</div>
       <h2 style="font-size:1.45rem;font-weight:900;margin-bottom:8px">Spielauswahl läuft</h2>
       <p style="font-size:.9rem;color:var(--muted);line-height:1.5;margin-bottom:14px">Die Spieler wählen am Handy je ein Spiel aus. Der Host sieht nur, wer bereits gewählt hat.</p>
       <div style="display:inline-flex;align-items:center;gap:10px;background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:800;color:${allDone?'var(--green)':'var(--gold)'}">${voted} von ${total} haben gewählt</div>
@@ -3310,7 +3313,8 @@ function saveSession(finalize) {
   if (finalize) {
     saveTournament({id: snapshot.id, name, date: new Date().toISOString(),
       players: state.players, scores: state.scores,
-      history: state.history, skipped: state.skipped||[], games: state.games});
+      history: state.history, skipped: state.skipped||[], games: state.games,
+      marathonMode: normalizeMarathonMode(state.marathonMode)});
     setTimeout(()=>{
       resetMarathonRuntime({ disconnectFirebase: true });
       showScreen('screen-home');
@@ -3427,12 +3431,13 @@ function renderTournamentList() {
   c.innerHTML = ts.map(t => {
     const sorted = Object.entries(t.scores||{}).sort((a,b)=>b[1]-a[1]);
     const winner = sorted[0]?.[0] || '?';
+    const modeLabel = getMarathonModeLabel(t.marathonMode || t.selectionMode);
     return `<div class="tournament-item" onclick="openTournamentDetail('${t.id}')">
       <div style="font-size:1.8rem">🏆</div>
       <div class="tournament-meta">
         <div style="font-weight:700">${esc(t.name)}</div>
         <div class="tournament-winner">🥇 ${esc(winner)} · ${(t.players||[]).map(p=>esc(p.name)).join(', ')}</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${new Date(t.date).toLocaleString('de-DE')}</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${new Date(t.date).toLocaleString('de-DE')} · ${esc(modeLabel)}</div>
       </div>
       <span style="color:var(--muted);font-size:.9rem">→</span>
     </div>`;
@@ -3455,6 +3460,7 @@ function openTournamentDetail(id) {
   };
   const sorted = Object.entries(t.scores||{}).sort((a,b)=>b[1]-a[1]);
   const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
+  const modeLabel = getMarathonModeLabel(t.marathonMode || t.selectionMode);
   const histHtml = (t.history||[]).map((h,i) => {
     const tags = [];
     if (h.vetoed) tags.push('<span style="font-size:.68rem;background:rgba(233,69,96,.2);color:var(--accent);padding:1px 6px;border-radius:4px">🗳️ Veto</span>');
@@ -3487,7 +3493,7 @@ function openTournamentDetail(id) {
           </div>`).join('')}
       </div>
       <div style="margin-top:12px;font-size:.78rem;color:var(--muted)">
-        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.history||[]).length} Spiele
+        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.history||[]).length} Spiele · 🧭 ${esc(modeLabel)}
       </div>
     </div>
     <div class="card">
@@ -3920,6 +3926,10 @@ function onGameLibrarySearch(value) {
 
 function normalizeMarathonMode(mode) {
   return mode === 'marioKart' ? 'marioKart' : 'random';
+}
+
+function getMarathonModeLabel(mode) {
+  return normalizeMarathonMode(mode) === 'marioKart' ? 'Spielwahl-Roulette' : 'Zufallsmodus';
 }
 
 function getSelectedMarathonMode() {
