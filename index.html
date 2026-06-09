@@ -172,13 +172,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .game-name{font-weight:600;font-size:.92rem}
 .game-meta{font-size:.75rem;color:var(--muted);margin-top:2px}
 .mk-vote-stage{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;perspective:900px}
-.mk-vote-card{position:relative;display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:center;padding:12px;border-radius:14px;background:var(--surface);border:2px solid rgba(255,255,255,.08);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,opacity .25s ease,filter .25s ease}
-.mk-vote-card.active{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,215,0,.18),0 0 26px rgba(255,215,0,.45);transform:translateY(-4px) scale(1.035)}
+.mk-vote-card{--player-border:rgba(255,255,255,.08);position:relative;display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:center;padding:12px;border-radius:14px;background:var(--surface);border:2px solid var(--player-border);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,opacity .25s ease,filter .25s ease}
+.mk-vote-card.active{border-color:var(--player-border);box-shadow:0 0 0 2px var(--player-border),0 0 0 4px rgba(255,215,0,.18),0 0 26px rgba(255,215,0,.45);transform:translateY(-4px) scale(1.035)}
 .mk-vote-card.dimmed{opacity:.16;filter:grayscale(1) blur(1px);transform:scale(.92)}
-.mk-vote-card.winner{z-index:4;border-color:var(--gold);box-shadow:0 0 0 4px rgba(255,215,0,.22),0 18px 50px rgba(0,0,0,.45),0 0 42px rgba(255,215,0,.55);transform:scale(1.16)}
+.mk-vote-card.winner{z-index:4;border-color:var(--player-border);box-shadow:0 0 0 2px var(--player-border),0 0 0 5px rgba(255,215,0,.22),0 18px 50px rgba(0,0,0,.45),0 0 42px rgba(255,215,0,.55);transform:scale(1.16)}
 .mk-vote-cover{width:72px;height:72px;border-radius:12px;background:#111;display:flex;align-items:center;justify-content:center;font-size:2rem;overflow:hidden}
 .mk-vote-cover img{width:100%;height:100%;object-fit:cover}
-.mk-vote-count{position:absolute;right:10px;top:10px;background:var(--gold);color:#111;border-radius:999px;padding:3px 8px;font-size:.72rem;font-weight:900}
 .mk-winner-moment{animation:mkWinnerPop .28s ease-out both;max-width:520px;margin:18px auto 0;text-align:center;background:linear-gradient(160deg,rgba(255,215,0,.2),rgba(233,69,96,.12));border:2px solid var(--gold);border-radius:18px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.35)}
 .mk-winner-cover{height:min(36vh,280px);border-radius:14px;background:#111;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:14px;font-size:4rem}
 .mk-winner-cover img{width:100%;height:100%;object-fit:contain}
@@ -1128,6 +1127,18 @@ const SKIP_JOKER = {id:'skip', icon:'⏭️', name:'Skip!', desc:'Magst du das a
 
 const PLAYER_COLORS = ['p0','p1','p2','p3','p4','p5','p6','p7','p8','p9',
   'p0','p1','p2','p3','p4','p5','p6','p7','p8','p9'];
+const PLAYER_COLOR_HEX = {
+  p0:'#e94560',
+  p1:'#4ecdc4',
+  p2:'#ffd700',
+  p3:'#a78bfa',
+  p4:'#f97316',
+  p5:'#22d3ee',
+  p6:'#a3e635',
+  p7:'#f472b6',
+  p8:'#fb923c',
+  p9:'#818cf8',
+};
 const TYPE_LABELS   = {ffa:'Jeder gegen Jeden','2v2':'Team vs Team','3v1':'1 gegen Alle',coop:'Koop'};
 const TYPE_SHORT    = {ffa:'JgJ','2v2':'TvT','3v1':'1vAll',coop:'Koop'};
 const DEFAULT_POINTS = {
@@ -2389,7 +2400,7 @@ function startGameVoteRound() {
   state._setupPhase = 'gameVote';
   state.activeJokers = {};
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
-  renderGameVoteHost();
+  window.renderGameVoteHost();
   renderPlanList();
   updateProgressBar();
   switchTab('tab-current');
@@ -3432,7 +3443,7 @@ function loadSession(id) {
     `${state.players.map(p=>p.name).join(', ')} · ${state.plan.length} Spiele`;
   renderAll();
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) renderJokerPickScreen();
-  if (state._setupPhase === 'gameVote') renderGameVoteHost();
+  if (state._setupPhase === 'gameVote') window.renderGameVoteHost();
   else if (state.currentIdx >= 0) renderCurrentGame();
   showToast(`Session „${s.name}" geladen ✓`);
 }
@@ -5967,11 +5978,11 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       if (p && state._setupPhase === 'gameVote' && action.voteId === state.currentVoteId && optionIds.has(action.gameId)) {
         if (state.currentGameVotes?.[p.name]) return;
         state.currentGameVotes[p.name] = action.gameId;
-        renderGameVoteHost();
+        window.renderGameVoteHost();
         fbPushState();
         saveCurrentToLS();
         showToast(allGameVotesIn() ? '🏁 Alle Spielwahlen sind da!' : `📱 ${p.name} hat gewählt ✓`);
-        if (allGameVotesIn()) setTimeout(() => runMarioKartSelectionAnimation(), 900);
+        if (allGameVotesIn()) setTimeout(() => window.runMarioKartSelectionAnimation(), 900);
       }
     }
     if (action.type === 'useJoker') {
@@ -6598,6 +6609,193 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   };
 
   window.smStartMarathonAfterPrivateGoals = window.startSecretGoals;
+
+  function getPlayerColorHex(playerColor) {
+    if (!playerColor) return '#ffd700';
+    if (String(playerColor).startsWith('#')) return playerColor;
+    return PLAYER_COLOR_HEX[playerColor] || '#ffd700';
+  }
+
+  function getFlatGameVoteEntries() {
+    const options = state.currentVoteOptions || [];
+    return Object.entries(state.currentGameVotes || {})
+      .map(([playerName, gameId]) => {
+        const game = options.find(g => g.id === gameId);
+        const player = findPlayerByVoteName(playerName);
+        if (!game || !player) return null;
+        return {
+          voteKey: normalizeVotePlayerName(player.name),
+          playerName: player.name,
+          color: getPlayerColorHex(player.color),
+          game,
+          gameId: game.id,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function getShuffledGameVoteDisplayEntries() {
+    const entries = getFlatGameVoteEntries();
+    const keys = entries.map(x => x.voteKey).sort();
+    const current = (state.currentVoteDisplayOrder || []).filter(k => keys.includes(k));
+    if (current.length !== keys.length) {
+      state.currentVoteDisplayOrder = shuffle(keys);
+    }
+    return [...entries].sort((a, b) =>
+      state.currentVoteDisplayOrder.indexOf(a.voteKey) - state.currentVoteDisplayOrder.indexOf(b.voteKey)
+    );
+  }
+
+  function renderGameVoteHost() {
+    const info = document.getElementById('current-game-info');
+    const result = document.getElementById('result-input-area');
+    if (!info || !result) return;
+    const voted = getGameVoteCount();
+    const total = state.players.length;
+    const allDone = allGameVotesIn();
+    const entries = getShuffledGameVoteDisplayEntries();
+    const waitingRows = state.players.map(p => {
+      const done = !!state.currentGameVotes?.[p.name];
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface);border-radius:9px">
+        <span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}</span>
+        <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--muted)'}">${done?'✅ hat abgestimmt':'⏳ wartet noch'}</span>
+      </div>`;
+    }).join('');
+    const voteCards = entries.map(({game:g, playerName, color, voteKey}, i) => `
+      <div id="mk-vote-card-${i}" class="mk-vote-card" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color}">
+        <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
+        <div>
+          <div style="font-size:.7rem;color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.9px;margin-bottom:4px">${esc(playerName)}</div>
+          <div class="game-name">${esc(g.name)}</div>
+          <div class="game-meta">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
+        </div>
+      </div>`).join('');
+
+    info.innerHTML = `
+      <div style="text-align:center;padding:10px 0">
+        <div style="font-size:.72rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Spielwahl-Roulette</div>
+        <h2 style="font-size:1.45rem;font-weight:900;margin-bottom:8px">Spielauswahl läuft</h2>
+        <p style="font-size:.9rem;color:var(--muted);line-height:1.5;margin-bottom:14px">Jede Stimme erscheint als eigene Karte. Gleiche Spiele werden mehrfach angezeigt und behalten die Farbe des jeweiligen Spielers.</p>
+        <div style="display:inline-flex;align-items:center;gap:10px;background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:800;color:${allDone?'var(--green)':'var(--gold)'}">${voted} von ${total} haben gewählt</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">${waitingRows}</div>
+      ${allDone ? `<div style="margin-top:18px">
+        <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Einzelstimmen, zufällig gemischt</div>
+        <div id="mk-weighted-votes" class="mk-vote-stage">${voteCards}</div>
+      </div>` : ''}
+    `;
+    result.innerHTML = allDone
+      ? '<button class="btn btn-gold" style="width:100%;margin-top:12px" onclick="runMarioKartSelectionAnimation()">🏁 Zufallsauswahl starten</button>'
+      : '<div class="empty-state"><div class="icon">📱</div><p>Warte auf Handy-Auswahlen</p></div>';
+  }
+  window.renderGameVoteHost = renderGameVoteHost;
+
+  function runMarioKartSelectionAnimation() {
+    if (!allGameVotesIn()) return;
+    if (state._gameVoteAnimating) return;
+    state._gameVoteAnimating = true;
+    const entries = getShuffledGameVoteDisplayEntries();
+    if (!entries.length) {
+      state._gameVoteAnimating = false;
+      return;
+    }
+    const winnerEntry = pickRandom(entries);
+    const durationMs = 5000 + Math.floor(Math.random() * 7000);
+    const tickCount = Math.max(20, Math.min(44, Math.round(durationMs / 220)));
+    const intervalCount = Math.max(1, tickCount - 1);
+    const weights = Array.from({ length: intervalCount }, (_, i) => {
+      const t = i / Math.max(intervalCount - 1, 1);
+      return 0.35 + Math.pow(t, 2.15) * 3.8;
+    });
+    const weightSum = weights.reduce((sum, value) => sum + value, 0);
+    const delays = weights.map(value => Math.max(45, Math.round(durationMs * value / weightSum)));
+    const sequence = [];
+    for (let i = 0; i < tickCount - 1; i++) sequence.push(pickRandom(entries));
+    sequence.push(winnerEntry);
+    const cards = [...document.querySelectorAll('.mk-vote-card')];
+    const result = document.getElementById('result-input-area');
+    if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Auswahl läuft...</p></div>';
+    if (!cards.length) { window.finishMarioKartSelection(winnerEntry.gameId, winnerEntry); return; }
+    let tick = 0;
+    const step = () => {
+      const entry = sequence[tick];
+      cards.forEach(card => {
+        const active = card.dataset.voteKey === entry.voteKey;
+        card.classList.toggle('active', active);
+        card.classList.toggle('winner', false);
+        card.classList.toggle('dimmed', false);
+      });
+      playMKTikSound(tick / Math.max(sequence.length - 1, 1));
+      tick++;
+      if (tick >= sequence.length) {
+        setTimeout(() => window.showMarioKartWinnerMoment(winnerEntry), 320);
+        return;
+      }
+      setTimeout(step, delays[tick - 1]);
+    };
+    step();
+  }
+  window.runMarioKartSelectionAnimation = runMarioKartSelectionAnimation;
+
+  function showMarioKartWinnerMoment(selection) {
+    const winnerEntry = selection && typeof selection === 'object' ? selection : null;
+    const gameId = winnerEntry?.gameId || selection;
+    const g = winnerEntry?.game || state.games.find(x => x.id === gameId) || state.currentVoteOptions.find(x => x.id === gameId);
+    const cards = [...document.querySelectorAll('.mk-vote-card')];
+    const winnerColor = winnerEntry?.color || '#ffd700';
+    cards.forEach(card => {
+      const winner = winnerEntry ? card.dataset.voteKey === winnerEntry.voteKey : card.dataset.gameId === gameId;
+      card.classList.toggle('winner', winner);
+      card.classList.toggle('dimmed', !winner);
+      card.classList.toggle('active', winner);
+    });
+    const info = document.getElementById('current-game-info');
+    if (info && g) {
+      info.insertAdjacentHTML('beforeend', `
+        <div class="mk-winner-moment" style="border-color:${winnerColor};box-shadow:0 20px 70px rgba(0,0,0,.35),0 0 0 3px ${winnerColor}55">
+          <div style="font-size:.72rem;color:${winnerColor};font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">${esc(winnerEntry?.playerName || 'Ausgewählt')}</div>
+          <div class="mk-winner-cover" style="box-shadow:0 0 0 3px ${winnerColor}55">${renderCoverFallbackHtml(g)}</div>
+          <div style="font-size:1.45rem;font-weight:900">${esc(g.name)}</div>
+          <div style="font-size:.82rem;color:var(--muted);margin-top:5px">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
+        </div>`);
+    }
+    playTone(784, .18, 'triangle', .16, 0);
+    playTone(1047, .28, 'triangle', .14, .16);
+    setTimeout(() => window.finishMarioKartSelection(gameId, winnerEntry), 1500);
+  }
+  window.showMarioKartWinnerMoment = showMarioKartWinnerMoment;
+
+  function finishMarioKartSelection(gameId) {
+    const g = state.games.find(x => x.id === gameId);
+    if (!g) { showToast('Ausgewähltes Spiel nicht gefunden.'); return; }
+    console.log('[gameVote finish]', state.currentGameVotes, g);
+    state.currentVoteWinner = gameId;
+    state.plan.push({
+      gameId: g.id,
+      rule: pickRandom(g.rules || ['Sonderaufgabe']),
+      teams: generateTeams(g.type),
+      done: false,
+      fromGameVote: true,
+      voteId: state.currentVoteId
+    });
+    state.currentIdx = state.plan.length - 1;
+    state.currentVoteOptions = [];
+    state.currentGameVotes = {};
+    state.currentVoteId = null;
+    state.currentVoteDisplayOrder = [];
+    state._setupPhase = 'marathon';
+    state._gameVoteAnimating = false;
+    state.activeJokers = {};
+    resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
+    renderCurrentGame();
+    renderPlanList();
+    updateStarterInfo();
+    updateProgressBar();
+    switchTab('tab-current');
+    if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+    saveCurrentToLS();
+  }
+  window.finishMarioKartSelection = finishMarioKartSelection;
 
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('button[onclick="startSecretGoals()"], button[onclick="smStartMarathonAfterPrivateGoals()"]')
