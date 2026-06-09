@@ -755,7 +755,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 <div class="modal-overlay" id="modal-crop">
 <div class="modal" style="max-width:420px">
   <h3 id="crop-title">Bild zuschneiden</h3>
-  <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Ziehe den Rahmen auf den gewuenschten Ausschnitt. Du kannst ihn verschieben und jede Kante oder Ecke einzeln anpassen.</p>
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Ziehe den Rahmen auf den gewünschten Ausschnitt. Du kannst ihn verschieben und jede Kante oder Ecke einzeln anpassen.</p>
   <div style="position:relative;width:100%;height:min(66vh,520px);min-height:360px;background:#111;border-radius:12px;overflow:hidden;user-select:none;border:2px solid var(--accent);touch-action:none" id="crop-container">
     <img id="crop-img" style="position:absolute;max-width:none;pointer-events:none;user-select:none"/>
     <div id="crop-box" style="position:absolute;border:2px solid var(--gold);box-shadow:0 0 0 9999px rgba(0,0,0,.48),0 0 0 1px rgba(0,0,0,.4) inset;cursor:move">
@@ -2051,7 +2051,7 @@ function renderJokerPickScreen() {
           const othersFull = !selected && picks.length >= 2;
           const vetoDisabled = jd.id==='veto' && !canPickVetoJoker();
           const disabled = othersFull || vetoDisabled;
-          const disabledTitle = vetoDisabled ? 'Nur verfuegbar, wenn es mehr Spiele als Spieler gibt.' : '';
+          const disabledTitle = vetoDisabled ? 'Nur verfügbar, wenn es mehr Spiele als Spieler gibt.' : '';
           return `<div class="joker-card joker-selectable ${selected?'joker-selected':''} ${disabled?'joker-used':''}"
             onclick="${disabled ? '' : `toggleJokerPick('${esc(p.name)}','${jd.id}')`}"
             title="${disabledTitle}" style="${vetoDisabled?'opacity:.45;cursor:not-allowed':''}">
@@ -2060,7 +2060,7 @@ function renderJokerPickScreen() {
             </div>
             <div class="joker-footer">
               <div class="joker-name">${jd.name}</div>
-              <div class="joker-desc">${vetoDisabled ? 'Nur verfuegbar, wenn es mehr Spiele als Spieler gibt.' : jd.desc}</div>
+              <div class="joker-desc">${vetoDisabled ? 'Nur verfügbar, wenn es mehr Spiele als Spieler gibt.' : jd.desc}</div>
             </div>
           </div>`;
         }).join('')}
@@ -2079,7 +2079,7 @@ function renderJokerPickScreen() {
 
 function toggleJokerPick(playerName, jokerId) {
   if (jokerId === 'veto' && !canPickVetoJoker()) {
-    showToast('Veto ist nur verfuegbar, wenn es mehr Spiele als Spieler gibt.');
+    showToast('Veto ist nur verfügbar, wenn es mehr Spiele als Spieler gibt.');
     return;
   }
   const picks = state.jokerPicks[playerName];
@@ -3679,14 +3679,14 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
         + '<td style="padding:8px;color:var(--muted)">' + durLabel + 'min</td>'
         + '<td style="padding:8px;display:flex;gap:4px">'
         + '<button class="btn btn-secondary btn-icon btn-sm" onclick="closeModal(\'modal-game-library\');openAddGameModal(\'' + g.id + '\')" title="Bearbeiten">✏️</button>'
-        + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGame(\'' + g.id + '\');openGameLibraryModal(\'games\')" title="Loeschen">🗑️</button>'
+        + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGame(\'' + g.id + '\');openGameLibraryModal(\'games\')" title="Löschen">🗑️</button>'
         + '</td></tr>';
     }).join('');
 
     c.innerHTML = tabs + searchBar
       + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--surface);border-radius:8px">'
       + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;font-weight:600">'
-      + '<input type="checkbox" id="select-all-games" style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleVisibleGames(this.checked)"/> Sichtbare auswaehlen / abwaehlen</label>'
+      + '<input type="checkbox" id="select-all-games" style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleVisibleGames(this.checked)"/> Sichtbare auswählen / abwählen</label>'
       + '<span style="font-size:.75rem;color:var(--muted);margin-left:auto">' + filteredGames.length + ' von ' + state.games.length + ' Spielen sichtbar</span></div>'
       + '<table style="width:100%;border-collapse:collapse;font-size:.85rem">'
       + '<thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
@@ -3738,7 +3738,7 @@ function renderCategoryLibrary(c, tabs) {
       + '<td style="padding:8px;color:var(--muted)">' + count + '</td>'
       + '<td style="padding:8px;display:flex;gap:4px">'
       + '<button class="btn btn-secondary btn-icon btn-sm" onclick="editGameCategory(\'' + cat.id + '\')" title="Bearbeiten">Bearbeiten</button>'
-      + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGameCategory(\'' + cat.id + '\')" title="Loeschen">Loeschen</button>'
+      + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGameCategory(\'' + cat.id + '\')" title="Löschen">Löschen</button>'
       + '</td></tr>'
       + (expanded
         ? '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td colspan="4" style="padding:4px 8px 12px 34px">'
@@ -3751,9 +3751,9 @@ function renderCategoryLibrary(c, tabs) {
     + '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;margin-bottom:12px;background:var(--surface);border-radius:8px;padding:10px">'
     + '<input type="text" id="cat-new-name" placeholder="Neue Oberkategorie, z.B. UNO"/>'
     + '<input type="number" id="cat-new-limit" min="0" placeholder="Limit leer/0 = unbegrenzt"/>'
-    + '<button class="btn btn-primary btn-sm" onclick="addGameCategoryFromLibrary()">Hinzufuegen</button>'
+    + '<button class="btn btn-primary btn-sm" onclick="addGameCategoryFromLibrary()">Hinzufügen</button>'
     + '</div>'
-    + '<p style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Leeres Limit oder 0 bedeutet: kein Limit. Beim Loeschen bleiben Spiele erhalten und verlieren nur ihre Zuordnung.</p>'
+    + '<p style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Leeres Limit oder 0 bedeutet: kein Limit. Beim Löschen bleiben Spiele erhalten und verlieren nur ihre Zuordnung.</p>'
     + (categoryRows
       ? '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
         + '<th style="text-align:left;padding:6px 8px">Name</th><th style="text-align:left;padding:6px 8px">Max. pro Marathon</th><th style="text-align:left;padding:6px 8px">Spiele</th><th></th>'
@@ -3770,7 +3770,7 @@ function renderCategoryLibrary(c, tabs) {
       + '<td style="padding:8px;color:var(--muted)">' + count + '</td>'
       + '<td style="padding:8px;display:flex;gap:4px">'
       + '<button class="btn btn-secondary btn-icon btn-sm" onclick="editGameCategory(\'' + cat.id + '\')" title="Bearbeiten">✏️</button>'
-      + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGameCategory(\'' + cat.id + '\')" title="Loeschen">🗑️</button>'
+      + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGameCategory(\'' + cat.id + '\')" title="Löschen">🗑️</button>'
       + '</td></tr>';
   }).join('');
 
@@ -3778,9 +3778,9 @@ function renderCategoryLibrary(c, tabs) {
     + '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;margin-bottom:12px;background:var(--surface);border-radius:8px;padding:10px">'
     + '<input type="text" id="cat-new-name" placeholder="Neue Oberkategorie, z.B. UNO"/>'
     + '<input type="number" id="cat-new-limit" min="0" placeholder="Limit leer/0 = unbegrenzt"/>'
-    + '<button class="btn btn-primary btn-sm" onclick="addGameCategoryFromLibrary()">Hinzufuegen</button>'
+    + '<button class="btn btn-primary btn-sm" onclick="addGameCategoryFromLibrary()">Hinzufügen</button>'
     + '</div>'
-    + '<p style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Leeres Limit oder 0 bedeutet: kein Limit. Beim Loeschen bleiben Spiele erhalten und verlieren nur ihre Zuordnung.</p>'
+    + '<p style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Leeres Limit oder 0 bedeutet: kein Limit. Beim Löschen bleiben Spiele erhalten und verlieren nur ihre Zuordnung.</p>'
     + (rows
       ? '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
         + '<th style="text-align:left;padding:6px 8px">Name</th><th style="text-align:left;padding:6px 8px">Max. pro Marathon</th><th style="text-align:left;padding:6px 8px">Spiele</th><th></th>'
@@ -3816,7 +3816,7 @@ function editGameCategory(id) {
 function deleteGameCategory(id) {
   const cat = getCategoryById(id);
   if (!cat) return;
-  showConfirm('Oberkategorie loeschen?', 'Spiele werden nicht geloescht, sondern verlieren nur diese Zuordnung.', () => {
+  showConfirm('Oberkategorie löschen?', 'Spiele werden nicht gelöscht, sondern verlieren nur diese Zuordnung.', () => {
     expandedGameCategories.delete(id);
     state.gameCategories = state.gameCategories.filter(c => c.id !== id);
     state.games.forEach(g => {
@@ -3827,7 +3827,7 @@ function deleteGameCategory(id) {
     });
     saveLS();
     openGameLibraryModal('categories');
-    showToast('Oberkategorie geloescht');
+    showToast('Oberkategorie gelöscht');
   });
 }
 
@@ -5365,7 +5365,7 @@ function smMobileRenderEndScreen(data, playerName) {
     <div style="background:${won?'linear-gradient(160deg,#332a05,#18182a)':'#1a1a2e'};border:2px solid ${won?'#ffd700':'rgba(255,255,255,.12)'};border-radius:18px;padding:18px;margin-bottom:12px;text-align:center">
       <div style="font-size:3.4rem;margin-bottom:8px">${won?'🏆':'🎮'}</div>
       <div style="font-size:.72rem;color:${won?'#ffd700':'#aaa'};text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Marathon beendet</div>
-      <div style="font-size:1.35rem;font-weight:900;margin-bottom:6px">${won?'Glueckwunsch, du hast gewonnen!':'Endergebnis'}</div>
+      <div style="font-size:1.35rem;font-weight:900;margin-bottom:6px">${won?'Glückwunsch, du hast gewonnen!':'Endergebnis'}</div>
       <div style="font-size:.92rem;color:#aaa;line-height:1.5">
         Platz <strong style="color:#ffd700">${rank}</strong> mit <strong style="color:#ffd700">${me.pts}</strong> Punkten
       </div>
@@ -5383,7 +5383,7 @@ function smMobileRenderEndScreen(data, playerName) {
       <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Dein Geheimziel</div>
       <div style="font-size:2rem;margin-bottom:8px">${smMobileEsc(goal.icon || '🎯')}</div>
       <div style="font-size:.88rem;line-height:1.6;white-space:pre-line;margin-bottom:8px">${smMobileEsc(goal.text || '')}</div>
-      <div style="font-size:.85rem;font-weight:900;color:${goalDone?'#4ecdc4':'#e94560'}">${goalDone?'Erfuellt!':'Nicht erfuellt'}</div>
+      <div style="font-size:.85rem;font-weight:900;color:${goalDone?'#4ecdc4':'#e94560'}">${goalDone?'Erfüllt!':'Nicht erfüllt'}</div>
     </div>` : ''}`;
 }
 
@@ -5646,7 +5646,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
               </div>
               <div style="padding:9px">
                 <div style="font-weight:900;font-size:.82rem;margin-bottom:4px;color:${selected?'#ffd700':'#fff'}">${smMobileEsc(j.name)}</div>
-                <div style="font-size:.68rem;color:#aaa;line-height:1.35">${vetoBlocked ? 'Nur verfuegbar, wenn es mehr Spiele als Spieler gibt.' : smMobileEsc(j.desc)}</div>
+                <div style="font-size:.68rem;color:#aaa;line-height:1.35">${vetoBlocked ? 'Nur verfügbar, wenn es mehr Spiele als Spieler gibt.' : smMobileEsc(j.desc)}</div>
               </div>
             </button>`;
           }).join('')}
@@ -5716,7 +5716,7 @@ window.smMobileToggleJoker = function smMobileToggleJoker(sessionId, playerName,
     if (jokerId === 'veto' && !canPickVetoJoker(data)) {
       const vetoIdx = picks.indexOf('veto');
       if (vetoIdx >= 0) picks.splice(vetoIdx, 1);
-      showToast('Veto ist nur verfuegbar, wenn es mehr Spiele als Spieler gibt.');
+      showToast('Veto ist nur verfügbar, wenn es mehr Spiele als Spieler gibt.');
       return;
     }
 
@@ -5742,7 +5742,7 @@ window.smMobileSubmitJokerPick = function smMobileSubmitJokerPick(sessionId, pla
     if (!data) return;
     if (picks.includes('veto') && !canPickVetoJoker(data)) {
       picks.splice(picks.indexOf('veto'), 1);
-      showToast('Veto ist nur verfuegbar, wenn es mehr Spiele als Spieler gibt.');
+      showToast('Veto ist nur verfügbar, wenn es mehr Spiele als Spieler gibt.');
       return;
     }
     firebase.database().ref(`sessions/${sessionId}/guestActions`).push({type:'jokerPick', playerName, picks, ts:Date.now()});
