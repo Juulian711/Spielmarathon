@@ -396,6 +396,13 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
           <label>Zeitlimit (Minuten, 0 = kein Limit)</label>
           <input type="number" id="time-limit" value="120" min="0" max="600"/>
         </div>
+        <div class="form-group">
+          <label>Marathon-Modus</label>
+          <select id="marathon-mode" onchange="updateMarathonMode(this.value)">
+            <option value="random">Komplett zufälliger Spielplan</option>
+            <option value="marioKart">Spielauswahl wie Mario Kart</option>
+          </select>
+        </div>
       </div>
 
       <!-- Saved sessions -->
@@ -1135,6 +1142,7 @@ let state = {
   goalAchieved:{},
   previewOrder:[],
   timeLimit:120,
+  marathonMode:'random',
   startTime:null,
   activeJokers:{},
   _marathonFinished:false,
@@ -1170,6 +1178,7 @@ function resetMarathonRuntime(options = {}) {
 
   state.plan = [];
   state.previewOrder = [];
+  state.marathonMode = getSelectedMarathonMode();
   state.currentIdx = -1;
   state.scores = {};
   state.history = [];
@@ -1209,6 +1218,7 @@ function resetMarathonRuntime(options = {}) {
   renderAll();
   renderPlayerSetup();
   renderPlanPreview();
+  syncMarathonModeInput();
   renderSavedSessions();
 }
 
@@ -1220,6 +1230,7 @@ function discardCurrentMarathonAndShowHome() {
   showScreen('screen-home');
   renderPlayerSetup();
   renderPlanPreview();
+  syncMarathonModeInput();
   renderSavedSessions();
 }
 
@@ -1262,6 +1273,7 @@ function buildSessionSnapshot(name, finalize=false) {
     goalAchieved: state.goalAchieved || {},
     activeJokers: state.activeJokers || {},
     timeLimit: state.timeLimit,
+    marathonMode: normalizeMarathonMode(state.marathonMode),
     startTime: state.startTime,
     games: state.games,
     gameCategories: state.gameCategories || [],
@@ -1653,6 +1665,7 @@ function renderGameListSetup() {
 }
 
 function generateAndShowPlan() {
+  state.marathonMode = getSelectedMarathonMode();
   const n = state.players.length;
   const compatible = n > 0
     ? state.games.filter(g => g.enabled !== false && g.minP <= n && g.maxP >= n)
@@ -2001,6 +2014,7 @@ function startMarathon() {
   }
 
   state.timeLimit = parseInt(document.getElementById('time-limit').value) || 0;
+  state.marathonMode = getSelectedMarathonMode();
   state.startTime = Date.now();
   state.scores    = {};
   state.jokers    = {};
@@ -3068,6 +3082,7 @@ function loadSession(id) {
   state.currentIdx = s.currentIdx ?? -1;
   state.jokers     = s.jokers  || {};
   state.timeLimit  = s.timeLimit || 120;
+  state.marathonMode = normalizeMarathonMode(s.marathonMode);
   state.startTime  = s.startTime || Date.now();
   state.jokerPicks = s.jokerPicks || {};
   state.skipped    = s.skipped   || [];
@@ -3475,7 +3490,7 @@ function saveCurrentToLS() {
     id:'__autosave__', name:'Autosave', date:new Date().toISOString(),
     finalized:false, players:state.players, scores:state.scores,
     history:state.history, plan:state.plan, currentIdx:state.currentIdx,
-    jokers:state.jokers, timeLimit:state.timeLimit, startTime:state.startTime,
+    jokers:state.jokers, timeLimit:state.timeLimit, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
     games:state.games, jokerPicks:state.jokerPicks, skipped:state.skipped,
     gameCategories:state.gameCategories || [],
     secretGoals:state.secretGoals, secretGoalExtras:state.secretGoalExtras, comebackGiven:state.comebackGiven, goalAchieved:state.goalAchieved, giftedJokers:state.giftedJokers,
@@ -3623,6 +3638,23 @@ function gameMatchesLibrarySearch(g, query) {
 function onGameLibrarySearch(value) {
   gameLibrarySearchQuery = value || '';
   openGameLibraryModal('games');
+}
+
+function normalizeMarathonMode(mode) {
+  return mode === 'marioKart' ? 'marioKart' : 'random';
+}
+
+function getSelectedMarathonMode() {
+  return normalizeMarathonMode(document.getElementById('marathon-mode')?.value || state.marathonMode);
+}
+
+function syncMarathonModeInput() {
+  const sel = document.getElementById('marathon-mode');
+  if (sel) sel.value = normalizeMarathonMode(state.marathonMode);
+}
+
+function updateMarathonMode(mode) {
+  state.marathonMode = normalizeMarathonMode(mode);
 }
 
 function toggleGameCategoryExpanded(id) {
@@ -4968,6 +5000,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTheme();
   updateGameCountBadge();
   renderPlayerSetup();
+  syncMarathonModeInput();
   renderSavedSessions();
 
   document.getElementById('new-player-name')?.addEventListener('keydown', e => {
@@ -5061,6 +5094,7 @@ function fbPushState() {
     goalAchieved:   state.goalAchieved,
     activeJokers:   state.activeJokers,
     games:          cleanGames,
+    marathonMode:   normalizeMarathonMode(state.marathonMode),
     marathonStarted: state.plan && state.plan.length > 0,
     ts:             Date.now(),
     hostAlive:      true,
@@ -5432,6 +5466,7 @@ window.startMarathon = function startMarathon() {
   }
 
   state.timeLimit = parseInt(document.getElementById('time-limit').value) || 0;
+  state.marathonMode = getSelectedMarathonMode();
   state.startTime = Date.now();
   state.scores = {};
   state.jokers = {};
@@ -5545,6 +5580,7 @@ window.fbPushState = function fbPushState() {
     goalAchieved: state.goalAchieved,
     activeJokers: state.activeJokers,
     games: cleanGames,
+    marathonMode: normalizeMarathonMode(state.marathonMode),
     phase: state._marathonFinished ? 'finished' : (state._setupPhase || (state._marathonStarted ? 'marathon' : 'setup')),
     marathonStarted: !!state._marathonStarted,
     marathonFinished: !!state._marathonFinished,
