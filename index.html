@@ -3599,6 +3599,7 @@ function openGameLibraryModalOld() {
 let gameLibraryActiveTab = 'games';
 let gameLibrarySearchQuery = '';
 let expandedGameCategories = new Set();
+let editingGameCategoryId = null;
 
 function gameMatchesLibrarySearch(g, query) {
   const q = String(query || '').trim().toLowerCase();
@@ -3719,6 +3720,23 @@ function renderCategoryLibrary(c, tabs) {
     const count = games.length;
     const limit = parseInt(cat.limit, 10) > 0 ? parseInt(cat.limit, 10) : 'kein Limit';
     const expanded = expandedGameCategories.has(cat.id);
+    const isEditing = editingGameCategoryId === cat.id;
+    const nameCell = isEditing
+      ? '<td style="padding:8px"><input type="text" id="cat-edit-name-' + cat.id + '" value="' + esc(cat.name) + '" placeholder="Name der Oberkategorie" onkeydown="handleGameCategoryEditKey(event,\'' + cat.id + '\')"/></td>'
+      : '<td style="padding:8px;font-weight:700;cursor:pointer" onclick="toggleGameCategoryExpanded(\'' + cat.id + '\')">'
+        + '<span style="display:inline-flex;align-items:center;gap:8px"><span style="color:var(--muted);font-size:.85rem">' + (expanded ? 'v' : '>') + '</span>' + esc(cat.name) + '</span></td>';
+    const limitCell = isEditing
+      ? '<td style="padding:8px"><input type="number" id="cat-edit-limit-' + cat.id + '" min="0" value="' + (parseInt(cat.limit, 10) > 0 ? parseInt(cat.limit, 10) : '') + '" placeholder="kein Limit" onkeydown="handleGameCategoryEditKey(event,\'' + cat.id + '\')"/></td>'
+      : '<td style="padding:8px;color:var(--muted)">' + limit + '</td>';
+    const actionCell = isEditing
+      ? '<td style="padding:8px;display:flex;gap:4px">'
+        + '<button class="btn btn-primary btn-sm" onclick="saveGameCategoryEdit(\'' + cat.id + '\')" title="Speichern">Speichern</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="cancelGameCategoryEdit()" title="Abbrechen">Abbrechen</button>'
+        + '</td>'
+      : '<td style="padding:8px;display:flex;gap:4px">'
+        + '<button class="btn btn-secondary btn-icon btn-sm" onclick="editGameCategory(\'' + cat.id + '\')" title="Bearbeiten">Bearbeiten</button>'
+        + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGameCategory(\'' + cat.id + '\')" title="Löschen">Löschen</button>'
+        + '</td>';
     const gameRows = games.length
       ? games.map(g => {
           const durLabel = g.minDur && g.minDur !== g.dur ? g.minDur + '-' + g.dur : g.dur;
@@ -3732,14 +3750,10 @@ function renderCategoryLibrary(c, tabs) {
         }).join('')
       : '<div style="padding:10px;color:var(--muted);font-size:.84rem;background:rgba(255,255,255,.03);border-radius:7px">Keine Spiele zugeordnet.</div>';
     return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)">'
-      + '<td style="padding:8px;font-weight:700;cursor:pointer" onclick="toggleGameCategoryExpanded(\'' + cat.id + '\')">'
-      + '<span style="display:inline-flex;align-items:center;gap:8px"><span style="color:var(--muted);font-size:.85rem">' + (expanded ? 'v' : '>') + '</span>' + esc(cat.name) + '</span></td>'
-      + '<td style="padding:8px;color:var(--muted)">' + limit + '</td>'
+      + nameCell
+      + limitCell
       + '<td style="padding:8px;color:var(--muted)">' + count + '</td>'
-      + '<td style="padding:8px;display:flex;gap:4px">'
-      + '<button class="btn btn-secondary btn-icon btn-sm" onclick="editGameCategory(\'' + cat.id + '\')" title="Bearbeiten">Bearbeiten</button>'
-      + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGameCategory(\'' + cat.id + '\')" title="Löschen">Löschen</button>'
-      + '</td></tr>'
+      + actionCell + '</tr>'
       + (expanded
         ? '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td colspan="4" style="padding:4px 8px 12px 34px">'
           + '<div style="border-left:2px solid rgba(233,69,96,.35);padding-left:12px">' + gameRows + '</div>'
@@ -3800,14 +3814,33 @@ function addGameCategoryFromLibrary() {
 function editGameCategory(id) {
   const cat = getCategoryById(id);
   if (!cat) return;
-  const name = prompt('Name der Oberkategorie', cat.name);
-  if (name === null) return;
+  editingGameCategoryId = id;
+  openGameLibraryModal('categories');
+  setTimeout(() => document.getElementById('cat-edit-name-' + id)?.focus(), 0);
+}
+
+function cancelGameCategoryEdit() {
+  editingGameCategoryId = null;
+  openGameLibraryModal('categories');
+}
+
+function handleGameCategoryEditKey(event, id) {
+  if (event.key === 'Enter') saveGameCategoryEdit(id);
+  if (event.key === 'Escape') cancelGameCategoryEdit();
+}
+
+function saveGameCategoryEdit(id) {
+  const cat = getCategoryById(id);
+  if (!cat) return;
+  const name = document.getElementById('cat-edit-name-' + id)?.value || '';
   const cleanName = name.trim();
   if (!cleanName) { showToast('Name darf nicht leer sein!'); return; }
-  const limitInput = prompt('Maximal im Marathon (leer oder 0 = kein Limit)', cat.limit || '');
-  if (limitInput === null) return;
+  const duplicate = (state.gameCategories || []).some(c => c.id !== id && c.name.toLowerCase() === cleanName.toLowerCase());
+  if (duplicate) { showToast('Diese Oberkategorie gibt es bereits!'); return; }
+  const limitInput = document.getElementById('cat-edit-limit-' + id)?.value || '';
   cat.name = cleanName;
   cat.limit = parseInt(limitInput, 10) > 0 ? parseInt(limitInput, 10) : '';
+  editingGameCategoryId = null;
   saveLS();
   openGameLibraryModal('categories');
   showToast('Oberkategorie aktualisiert');
