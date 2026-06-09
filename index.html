@@ -1161,6 +1161,7 @@ let state = {
   currentGameVotes:{},
   currentVoteId:null,
   currentVoteWinner:null,
+  currentVoteDisplayOrder:[],
   timeLimit:120,
   marathonMode:'random',
   startTime:null,
@@ -1201,6 +1202,7 @@ function resetMarathonRuntime(options = {}) {
   state.currentGameVotes = {};
   state.currentVoteId = null;
   state.currentVoteWinner = null;
+  state.currentVoteDisplayOrder = [];
   state.marathonMode = getSelectedMarathonMode();
   state.currentIdx = -1;
   state.scores = {};
@@ -1307,6 +1309,7 @@ function buildSessionSnapshot(name, finalize=false) {
     currentGameVotes: state.currentGameVotes || {},
     currentVoteId: state.currentVoteId || null,
     currentVoteWinner: state.currentVoteWinner || null,
+    currentVoteDisplayOrder: state.currentVoteDisplayOrder || [],
     timeLimit: state.timeLimit,
     marathonMode: normalizeMarathonMode(state.marathonMode),
     startTime: state.startTime,
@@ -2100,6 +2103,7 @@ function startMarathon() {
   state.currentGameVotes = {};
   state.currentVoteId = null;
   state.currentVoteWinner = null;
+  state.currentVoteDisplayOrder = [];
   state.secretGoals = {};
   state.comebackGiven = {};
   state.goalAchieved = {};
@@ -2379,6 +2383,7 @@ function startGameVoteRound() {
   state.currentGameVotes = {};
   state.currentVoteWinner = null;
   state.currentVoteId = uid();
+  state.currentVoteDisplayOrder = [];
   state._gameVoteAnimating = false;
   state._setupPhase = 'gameVote';
   state.activeJokers = {};
@@ -2401,6 +2406,28 @@ function allGameVotesIn() {
   return state.players.length > 0 && getGameVoteCount() >= state.players.length;
 }
 
+function normalizeVotePlayerName(name) {
+  try { name = decodeURIComponent(String(name ?? '')); } catch {}
+  return String(name ?? '').trim().normalize ? String(name ?? '').trim().normalize('NFC') : String(name ?? '').trim();
+}
+
+function findPlayerByVoteName(name, players = state.players || []) {
+  const n = normalizeVotePlayerName(name);
+  return players.find(p => normalizeVotePlayerName(p.name) === n)
+    || players.find(p => smSafeId(p.name) === smSafeId(name))
+    || null;
+}
+
+function getMobileVoteKey(sessionId, playerName, voteId) {
+  return [sessionId, encodeURIComponent(normalizeVotePlayerName(playerName)), voteId || ''].join('::');
+}
+
+function renderCoverFallbackHtml(g, escFn = esc) {
+  const cover = g?.coverImg || '';
+  const fallback = '<span style="display:' + (cover ? 'none' : 'flex') + ';width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:3px;text-align:center;padding:6px"><span style="font-size:1.7rem">🎲</span><span style="font-size:.62rem;line-height:1.15;font-weight:800;max-width:100%;overflow:hidden;text-overflow:ellipsis">' + escFn(g?.name || 'Spiel') + '</span></span>';
+  return (cover ? `<img src="${escFn(cover)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : '') + fallback;
+}
+
 function getAggregatedGameVotes() {
   const counts = {};
   Object.values(state.currentGameVotes || {}).forEach(id => {
@@ -2412,6 +2439,18 @@ function getAggregatedGameVotes() {
   })).filter(x => x.game);
 }
 
+function getShuffledGameVoteDisplayItems() {
+  const aggregated = getAggregatedGameVotes();
+  const ids = aggregated.map(x => x.game.id).sort();
+  const current = (state.currentVoteDisplayOrder || []).filter(id => ids.includes(id));
+  if (current.length !== ids.length) {
+    state.currentVoteDisplayOrder = shuffle(ids);
+  }
+  return [...aggregated].sort((a,b) =>
+    state.currentVoteDisplayOrder.indexOf(a.game.id) - state.currentVoteDisplayOrder.indexOf(b.game.id)
+  );
+}
+
 function renderGameVoteHost() {
   const info = document.getElementById('current-game-info');
   const result = document.getElementById('result-input-area');
@@ -2419,18 +2458,18 @@ function renderGameVoteHost() {
   const voted = getGameVoteCount();
   const total = state.players.length;
   const allDone = allGameVotesIn();
-  const aggregated = getAggregatedGameVotes();
+  const aggregated = getShuffledGameVoteDisplayItems();
   const waitingRows = state.players.map(p => {
     const done = !!state.currentGameVotes?.[p.name];
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface);border-radius:9px">
       <span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}</span>
-      <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--muted)'}">${done?'✅ gewählt':'⏳ offen'}</span>
+      <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--muted)'}">${done?'✅ hat abgestimmt':'⏳ wartet noch'}</span>
     </div>`;
   }).join('');
   const voteCards = aggregated.map(({game:g, count}, i) => `
     <div id="mk-vote-card-${i}" class="mk-vote-card" data-game-id="${esc(g.id)}">
       ${count > 1 ? `<div class="mk-vote-count">x${count}</div>` : ''}
-      <div class="mk-vote-cover">${g.coverImg ? `<img src="${esc(g.coverImg)}" onerror="this.style.display='none'">` : '🎲'}</div>
+      <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
       <div>
         <div class="game-name">${esc(g.name)}</div>
         <div class="game-meta">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
@@ -2506,7 +2545,7 @@ function showMarioKartWinnerMoment(gameId) {
     info.insertAdjacentHTML('beforeend', `
       <div class="mk-winner-moment">
         <div style="font-size:.72rem;color:var(--gold);font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Ausgewählt</div>
-        <div class="mk-winner-cover">${g.coverImg ? `<img src="${esc(g.coverImg)}" onerror="this.style.display='none'">` : '🎲'}</div>
+        <div class="mk-winner-cover">${renderCoverFallbackHtml(g)}</div>
         <div style="font-size:1.45rem;font-weight:900">${esc(g.name)}</div>
         <div style="font-size:.82rem;color:var(--muted);margin-top:5px">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
       </div>`);
@@ -2532,6 +2571,7 @@ function finishMarioKartSelection(gameId) {
   state.currentVoteOptions = [];
   state.currentGameVotes = {};
   state.currentVoteId = null;
+  state.currentVoteDisplayOrder = [];
   state._setupPhase = 'marathon';
   state._gameVoteAnimating = false;
   state.activeJokers = {};
@@ -3366,6 +3406,7 @@ function loadSession(id) {
   state.currentGameVotes = s.currentGameVotes || {};
   state.currentVoteId = s.currentVoteId || null;
   state.currentVoteWinner = s.currentVoteWinner || null;
+  state.currentVoteDisplayOrder = Array.isArray(s.currentVoteDisplayOrder) ? s.currentVoteDisplayOrder : [];
   state.secretGoals  = s.secretGoals  || {};
   state.secretGoalExtras = s.secretGoalExtras || {};
   state.comebackGiven = s.comebackGiven || {};
@@ -3777,6 +3818,7 @@ function saveCurrentToLS() {
     games:state.games, jokerPicks:state.jokerPicks, skipped:state.skipped,
     gameCategories:state.gameCategories || [],
     currentVoteOptions:state.currentVoteOptions || [], currentGameVotes:state.currentGameVotes || {}, currentVoteId:state.currentVoteId || null, currentVoteWinner:state.currentVoteWinner || null,
+    currentVoteDisplayOrder:state.currentVoteDisplayOrder || [],
     secretGoals:state.secretGoals, secretGoalExtras:state.secretGoalExtras, comebackGiven:state.comebackGiven, goalAchieved:state.goalAchieved, giftedJokers:state.giftedJokers,
     setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
   };
@@ -5903,7 +5945,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
     if (!action || Date.now() - action.ts > 120000) return;
     snap.ref.remove();
     if (action.type === 'jokerPick') {
-      const p = state.players.find(x => x.name === action.playerName);
+      const p = findPlayerByVoteName(action.playerName);
       const validIds = new Set(JOKER_DEFS.map(j=>j.id));
       const picks = Array.isArray(action.picks)
         ? action.picks.filter(id => validIds.has(id) && (id !== 'veto' || canPickVetoJoker())).slice(0,2)
@@ -5916,7 +5958,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       }
     }
     if (action.type === 'gameVote') {
-      const p = state.players.find(x => x.name === action.playerName);
+      const p = findPlayerByVoteName(action.playerName);
       const optionIds = new Set((state.currentVoteOptions || []).map(g => g.id));
       if (p && state._setupPhase === 'gameVote' && action.voteId === state.currentVoteId && optionIds.has(action.gameId)) {
         if (state.currentGameVotes?.[p.name]) return;
@@ -5989,10 +6031,12 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       return;
     }
     const players = data.players || [];
-    if (!players.find(p => p.name === playerName)) {
+    const currentPlayer = findPlayerByVoteName(playerName, players);
+    if (!currentPlayer) {
       c.innerHTML = `<div style="text-align:center;padding:40px 20px;color:#e94560;font-weight:700">Dieser Spieler gehört nicht zu dieser Session.</div>`;
       return;
     }
+    playerName = currentPlayer.name;
 
     if (data.marathonFinished === true || data.phase === 'finished') {
       c.innerHTML = smMobileRenderEndScreen(data, playerName);
@@ -6002,10 +6046,12 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     if (data.phase === 'gameVote') {
       const options = data.currentVoteOptions || [];
       const votedPlayers = data.gameVoteVotedPlayers || [];
-      const alreadySaved = votedPlayers.includes(playerName);
       if (!window._mobileGameVotes) window._mobileGameVotes = {};
-      const voteKey = sessionId + playerName + (data.currentVoteId || '');
+      if (!window._mobileGameVoteSubmitted) window._mobileGameVoteSubmitted = {};
+      const voteKey = getMobileVoteKey(sessionId, playerName, data.currentVoteId || '');
+      const alreadySaved = votedPlayers.some(n => normalizeVotePlayerName(n) === normalizeVotePlayerName(playerName)) || !!window._mobileGameVoteSubmitted[voteKey];
       const selectedGameId = window._mobileGameVotes[voteKey] || '';
+      const shownVoteCount = Math.max(votedPlayers.length, alreadySaved ? 1 : 0);
       c.innerHTML = `
         <div style="background:#1a1a2e;border-radius:16px;padding:14px;margin-bottom:12px;border:2px solid ${alreadySaved?'#4ecdc4':'rgba(255,215,0,.25)'}">
           <div style="font-size:.7rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Spielauswahl</div>
@@ -6015,10 +6061,10 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
           ${options.length ? options.map(g => {
             const selected = selectedGameId === g.id;
-            return `<button onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(data.currentVoteId || '')}','${smMobileEsc(g.id)}')`}"
+            return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(data.currentVoteId || '')}','${smMobileEsc(g.id)}')`}"
               style="display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${alreadySaved && !selected ? .7 : 1}">
               <div style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem">
-                ${g.coverImg ? `<img src="${smMobileEsc(g.coverImg)}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : '🎲'}
+                ${renderCoverFallbackHtml(g, smMobileEsc)}
               </div>
               <div>
                 <div style="font-weight:900;font-size:.98rem;margin-bottom:5px">${smMobileEsc(g.name)}</div>
@@ -6027,10 +6073,10 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
             </button>`;
           }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>'}
         </div>
-        <button onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(data.currentVoteId || '')}')" style="width:100%;border:none;border-radius:12px;background:${selectedGameId&&!alreadySaved?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${selectedGameId&&!alreadySaved?'':'disabled'}>
-          ${alreadySaved?'✅ Auswahl gespeichert':selectedGameId?'Auswahl speichern':'Ein Spiel auswählen'}
+        <button id="mobile-game-vote-confirm" onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(data.currentVoteId || '')}')" style="width:100%;border:none;border-radius:12px;background:${selectedGameId&&!alreadySaved?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${selectedGameId&&!alreadySaved?'':'disabled'}>
+          ${alreadySaved?'✅ Auswahl gespeichert':selectedGameId?'Bestätigen':'Ein Spiel auswählen'}
         </button>
-        <div style="font-size:.72rem;color:#777;text-align:center;margin-top:10px">${votedPlayers.length} von ${(data.players||[]).length} haben gewählt.</div>`;
+        <div style="font-size:.72rem;color:#777;text-align:center;margin-top:10px">${shownVoteCount} von ${(data.players||[]).length} haben gewählt.</div>`;
       return;
     }
 
@@ -6175,18 +6221,32 @@ window.smMobileSubmitJokerPick = function smMobileSubmitJokerPick(sessionId, pla
 
 window.smMobilePickGameVote = function smMobilePickGameVote(sessionId, playerName, voteId, gameId) {
   if (!window._mobileGameVotes) window._mobileGameVotes = {};
-  window._mobileGameVotes[sessionId + playerName + voteId] = gameId;
-  renderMobilePlayerView(sessionId, playerName);
+  const key = getMobileVoteKey(sessionId, playerName, voteId);
+  window._mobileGameVotes[key] = gameId;
+  document.querySelectorAll('[data-mobile-vote-option]').forEach(btn => {
+    const selected = btn.getAttribute('data-mobile-vote-option') === gameId;
+    btn.style.borderColor = selected ? '#ffd700' : 'rgba(255,255,255,.12)';
+    btn.style.background = selected ? 'linear-gradient(160deg,#2d2508,#1a1a2e)' : '#1a1a2e';
+  });
+  const confirm = document.getElementById('mobile-game-vote-confirm');
+  if (confirm) {
+    confirm.disabled = false;
+    confirm.style.background = '#e94560';
+    confirm.textContent = 'Bestätigen';
+  }
 };
 
 window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playerName, voteId) {
-  const gameId = window._mobileGameVotes?.[sessionId + playerName + voteId];
+  const key = getMobileVoteKey(sessionId, playerName, voteId);
+  const gameId = window._mobileGameVotes?.[key];
   if (!gameId) return;
   firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
     const data = snap.val();
     if (!data || data.phase !== 'gameVote' || data.currentVoteId !== voteId) return;
     const valid = (data.currentVoteOptions || []).some(g => g.id === gameId);
     if (!valid) return;
+    if (!window._mobileGameVoteSubmitted) window._mobileGameVoteSubmitted = {};
+    window._mobileGameVoteSubmitted[key] = true;
     firebase.database().ref(`sessions/${sessionId}/guestActions`).push({
       type:'gameVote',
       playerName,
@@ -6195,7 +6255,19 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
       ts:Date.now()
     });
     const c = document.getElementById('mobile-content');
-    if (c) c.insertAdjacentHTML('afterbegin', `<div style="background:#0d2a1a;border:1px solid #4ecdc4;color:#4ecdc4;border-radius:10px;padding:10px;margin-bottom:10px;text-align:center;font-weight:800">✅ Auswahl gesendet!</div>`);
+    if (c) {
+      c.querySelectorAll('[data-mobile-vote-option]').forEach(btn => {
+        btn.disabled = true;
+        if (btn.getAttribute('data-mobile-vote-option') !== gameId) btn.style.opacity = '.7';
+      });
+      const confirm = document.getElementById('mobile-game-vote-confirm');
+      if (confirm) {
+        confirm.disabled = true;
+        confirm.style.background = '#555';
+        confirm.textContent = '✅ Auswahl gespeichert';
+      }
+      c.insertAdjacentHTML('afterbegin', `<div style="background:#0d2a1a;border:1px solid #4ecdc4;color:#4ecdc4;border-radius:10px;padding:10px;margin-bottom:10px;text-align:center;font-weight:800">✅ Auswahl gespeichert<br><span style="font-size:.78rem;color:#9ee7dc">Warte auf die anderen Spieler</span></div>`);
+    }
   });
 };
 
