@@ -171,6 +171,18 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .game-cover img{width:100%;height:100%;object-fit:cover}
 .game-name{font-weight:600;font-size:.92rem}
 .game-meta{font-size:.75rem;color:var(--muted);margin-top:2px}
+.mk-vote-stage{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;perspective:900px}
+.mk-vote-card{position:relative;display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:center;padding:12px;border-radius:14px;background:var(--surface);border:2px solid rgba(255,255,255,.08);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,opacity .25s ease,filter .25s ease}
+.mk-vote-card.active{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,215,0,.18),0 0 26px rgba(255,215,0,.45);transform:translateY(-4px) scale(1.035)}
+.mk-vote-card.dimmed{opacity:.16;filter:grayscale(1) blur(1px);transform:scale(.92)}
+.mk-vote-card.winner{z-index:4;border-color:var(--gold);box-shadow:0 0 0 4px rgba(255,215,0,.22),0 18px 50px rgba(0,0,0,.45),0 0 42px rgba(255,215,0,.55);transform:scale(1.16)}
+.mk-vote-cover{width:72px;height:72px;border-radius:12px;background:#111;display:flex;align-items:center;justify-content:center;font-size:2rem;overflow:hidden}
+.mk-vote-cover img{width:100%;height:100%;object-fit:cover}
+.mk-vote-count{position:absolute;right:10px;top:10px;background:var(--gold);color:#111;border-radius:999px;padding:3px 8px;font-size:.72rem;font-weight:900}
+.mk-winner-moment{animation:mkWinnerPop .28s ease-out both;max-width:520px;margin:18px auto 0;text-align:center;background:linear-gradient(160deg,rgba(255,215,0,.2),rgba(233,69,96,.12));border:2px solid var(--gold);border-radius:18px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.35)}
+.mk-winner-cover{height:min(36vh,280px);border-radius:14px;background:#111;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:14px;font-size:4rem}
+.mk-winner-cover img{width:100%;height:100%;object-fit:contain}
+@keyframes mkWinnerPop{from{opacity:0;transform:scale(.8) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:.7rem;font-weight:700;text-transform:uppercase}
 .badge-ffa{background:rgba(233,69,96,.2);color:#e94560}
 .badge-2v2{background:rgba(78,205,196,.2);color:#4ecdc4}
@@ -2378,6 +2390,17 @@ function allGameVotesIn() {
   return state.players.length > 0 && getGameVoteCount() >= state.players.length;
 }
 
+function getAggregatedGameVotes() {
+  const counts = {};
+  Object.values(state.currentGameVotes || {}).forEach(id => {
+    if ((state.currentVoteOptions || []).some(g => g.id === id)) counts[id] = (counts[id] || 0) + 1;
+  });
+  return Object.entries(counts).map(([id, count]) => ({
+    game: state.currentVoteOptions.find(g => g.id === id),
+    count
+  })).filter(x => x.game);
+}
+
 function renderGameVoteHost() {
   const info = document.getElementById('current-game-info');
   const result = document.getElementById('result-input-area');
@@ -2385,8 +2408,7 @@ function renderGameVoteHost() {
   const voted = getGameVoteCount();
   const total = state.players.length;
   const allDone = allGameVotesIn();
-  const votes = Object.values(state.currentGameVotes || {});
-  const weighted = votes.map(id => state.currentVoteOptions.find(g => g.id === id)).filter(Boolean);
+  const aggregated = getAggregatedGameVotes();
   const waitingRows = state.players.map(p => {
     const done = !!state.currentGameVotes?.[p.name];
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface);border-radius:9px">
@@ -2394,9 +2416,10 @@ function renderGameVoteHost() {
       <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--muted)'}">${done?'✅ gewählt':'⏳ offen'}</span>
     </div>`;
   }).join('');
-  const voteCards = weighted.map((g, i) => `
-    <div id="mk-vote-card-${i}" class="game-item" style="grid-template-columns:64px 1fr;transition:.18s;border:2px solid transparent">
-      <div class="game-cover" style="width:56px;height:56px">${g.coverImg ? `<img src="${esc(g.coverImg)}" onerror="this.style.display='none'">` : '🎲'}</div>
+  const voteCards = aggregated.map(({game:g, count}, i) => `
+    <div id="mk-vote-card-${i}" class="mk-vote-card" data-game-id="${esc(g.id)}">
+      ${count > 1 ? `<div class="mk-vote-count">x${count}</div>` : ''}
+      <div class="mk-vote-cover">${g.coverImg ? `<img src="${esc(g.coverImg)}" onerror="this.style.display='none'">` : '🎲'}</div>
       <div>
         <div class="game-name">${esc(g.name)}</div>
         <div class="game-meta">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
@@ -2413,7 +2436,7 @@ function renderGameVoteHost() {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">${waitingRows}</div>
     ${allDone ? `<div style="margin-top:18px">
       <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Anonyme Auswahl, mehrfach gewählt = mehrfach im Lostopf</div>
-      <div id="mk-weighted-votes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">${voteCards}</div>
+      <div id="mk-weighted-votes" class="mk-vote-stage">${voteCards}</div>
     </div>` : ''}
   `;
   result.innerHTML = allDone
@@ -2429,27 +2452,57 @@ function runMarioKartSelectionAnimation() {
   const weightedIds = votes.filter(id => state.currentVoteOptions.some(g => g.id === id));
   if (!weightedIds.length) { state._gameVoteAnimating = false; return; }
   const winnerId = pickRandom(weightedIds);
-  const cards = [...document.querySelectorAll('[id^="mk-vote-card-"]')];
+  const cards = [...document.querySelectorAll('.mk-vote-card')];
+  const result = document.getElementById('result-input-area');
+  if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Auswahl läuft...</p></div>';
+  if (!cards.length) { finishMarioKartSelection(winnerId); return; }
+  const sequence = [];
+  const spinTicks = Math.max(22, weightedIds.length * 5);
+  for (let i = 0; i < spinTicks - 1; i++) sequence.push(pickRandom(weightedIds));
+  sequence.push(winnerId);
   let tick = 0;
-  const totalTicks = Math.max(14, cards.length * 4);
-  const interval = setInterval(() => {
+  const step = () => {
+    const gameId = sequence[tick];
     cards.forEach(card => {
-      card.style.borderColor = 'transparent';
-      card.style.transform = 'scale(1)';
-      card.style.boxShadow = '';
+      const active = card.dataset.gameId === gameId;
+      card.classList.toggle('active', active);
+      card.classList.remove('winner', 'dimmed');
     });
-    const card = cards[tick % Math.max(cards.length, 1)];
-    if (card) {
-      card.style.borderColor = 'var(--gold)';
-      card.style.transform = 'scale(1.03)';
-      card.style.boxShadow = '0 0 18px rgba(255,215,0,.25)';
-    }
+    playMKTikSound(tick / Math.max(sequence.length - 1, 1));
     tick++;
-    if (tick >= totalTicks) {
-      clearInterval(interval);
-      setTimeout(() => finishMarioKartSelection(winnerId), 250);
+    if (tick >= sequence.length) {
+      setTimeout(() => showMarioKartWinnerMoment(winnerId), 320);
+      return;
     }
-  }, 110);
+    const progress = tick / Math.max(sequence.length - 1, 1);
+    const delay = Math.round(55 + Math.pow(progress, 2.25) * 360);
+    setTimeout(step, delay);
+  };
+  step();
+}
+
+function showMarioKartWinnerMoment(gameId) {
+  const g = state.games.find(x => x.id === gameId) || state.currentVoteOptions.find(x => x.id === gameId);
+  const cards = [...document.querySelectorAll('.mk-vote-card')];
+  cards.forEach(card => {
+    const winner = card.dataset.gameId === gameId;
+    card.classList.toggle('winner', winner);
+    card.classList.toggle('dimmed', !winner);
+    card.classList.toggle('active', winner);
+  });
+  const info = document.getElementById('current-game-info');
+  if (info && g) {
+    info.insertAdjacentHTML('beforeend', `
+      <div class="mk-winner-moment">
+        <div style="font-size:.72rem;color:var(--gold);font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Ausgewählt</div>
+        <div class="mk-winner-cover">${g.coverImg ? `<img src="${esc(g.coverImg)}" onerror="this.style.display='none'">` : '🎲'}</div>
+        <div style="font-size:1.45rem;font-weight:900">${esc(g.name)}</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-top:5px">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
+      </div>`);
+  }
+  playTone(784, .18, 'triangle', .16, 0);
+  playTone(1047, .28, 'triangle', .14, .16);
+  setTimeout(() => finishMarioKartSelection(gameId), 1500);
 }
 
 function finishMarioKartSelection(gameId) {
@@ -4591,6 +4644,13 @@ function playTone(freq, duration, type='sine', vol=0.3, delay=0) {
     osc.start(ctx.currentTime + delay);
     osc.stop(ctx.currentTime + delay + duration + 0.05);
   } catch {}
+}
+
+function playMKTikSound(progress=0) {
+  if (!soundEnabled) return;
+  const p = Math.max(0, Math.min(1, progress));
+  const freq = 620 + Math.round((1 - p) * 180);
+  playTone(freq, 0.045, 'square', 0.055);
 }
 
 function haptic(pattern=[50]) {
