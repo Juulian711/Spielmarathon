@@ -2379,6 +2379,7 @@ function startGameVoteRound() {
     showEndScreen();
     return;
   }
+  console.log('[gameVote start]', options, state.players);
   state.currentVoteOptions = options;
   state.currentGameVotes = {};
   state.currentVoteWinner = null;
@@ -2558,6 +2559,7 @@ function showMarioKartWinnerMoment(gameId) {
 function finishMarioKartSelection(gameId) {
   const g = state.games.find(x => x.id === gameId);
   if (!g) { showToast('Ausgewähltes Spiel nicht gefunden.'); return; }
+  console.log('[gameVote finish]', state.currentGameVotes, g);
   state.currentVoteWinner = gameId;
   state.plan.push({
     gameId: g.id,
@@ -5911,6 +5913,8 @@ window.fbPushState = function fbPushState() {
   const cleanGames = (state.games||[]).map(g=>({
     id:g.id, name:g.name, type:g.type, dur:g.dur, minP:g.minP, maxP:g.maxP, categoryId:g.categoryId || ''
   }));
+  const phase = state._marathonFinished ? 'finished' : (state._setupPhase || (state._marathonStarted ? 'marathon' : 'setup'));
+  console.log('[fbPushState]', phase, (state.currentVoteOptions || []).length, state.currentGameVotes || {});
   const data = {
     players: state.players,
     scores: state.scores,
@@ -5928,7 +5932,7 @@ window.fbPushState = function fbPushState() {
     currentVoteOptions: state.currentVoteOptions || [],
     currentVoteId: state.currentVoteId || null,
     gameVoteVotedPlayers: Object.keys(state.currentGameVotes || {}),
-    phase: state._marathonFinished ? 'finished' : (state._setupPhase || (state._marathonStarted ? 'marathon' : 'setup')),
+    phase,
     marathonStarted: !!state._marathonStarted,
     marathonFinished: !!state._marathonFinished,
     ts: Date.now(),
@@ -6030,6 +6034,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       c.innerHTML = `<div style="text-align:center;padding:40px 20px"><div style="font-size:2rem;margin-bottom:12px">❌</div><div style="color:#e94560;font-weight:700">Session nicht gefunden!</div></div>`;
       return;
     }
+    console.log('[mobile render]', playerName, data.phase, data.currentVoteOptions?.length, data.currentGameVotes || data.gameVoteVotedPlayers || {});
     const players = data.players || [];
     const currentPlayer = findPlayerByVoteName(playerName, players);
     if (!currentPlayer) {
@@ -6575,7 +6580,10 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     _finishSetupAndStart();
 
     // Defensive Absicherung: Der Host muss nach dem Klick wirklich im Marathon landen.
-    state._setupPhase = 'marathon';
+    // Im Spielwahl-Roulette startet _finishSetupAndStart() direkt eine gameVote-Phase;
+    // diese darf nicht wieder zu "marathon" überschrieben werden.
+    const voteRunning = isMarioKartMode() && state.currentVoteId && (state.currentVoteOptions || []).length;
+    state._setupPhase = voteRunning ? 'gameVote' : 'marathon';
     state._marathonStarted = true;
     if (state.currentIdx < 0 && state.plan && state.plan.length) nextGame();
     showScreen('screen-marathon');
