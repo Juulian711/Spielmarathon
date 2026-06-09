@@ -1243,15 +1243,23 @@ function resetMarathonRuntime(options = {}) {
 }
 
 function discardCurrentMarathonAndShowHome() {
-  resetMarathonRuntime({ disconnectFirebase: true, clearAutosave: true });
-  document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
-  const homeSaveName = document.getElementById('home-save-name');
-  if (homeSaveName) homeSaveName.value = '';
-  showScreen('screen-home');
-  renderPlayerSetup();
-  renderPlanPreview();
-  syncMarathonModeInput();
-  renderSavedSessions();
+  try {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+    resetMarathonRuntime({ disconnectFirebase: true, clearAutosave: true });
+  } catch(e) {
+    console.warn('Marathon reset failed while returning home:', e);
+  } finally {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+    const homeSaveName = document.getElementById('home-save-name');
+    if (homeSaveName) homeSaveName.value = '';
+    showScreen('screen-home');
+    renderPlayerSetup();
+    renderPlanPreview();
+    syncMarathonModeInput();
+    renderSavedSessions();
+    updateGameCountBadge();
+    if (typeof renderFbStatus === 'function') renderFbStatus();
+  }
 }
 
 function hasActiveMarathonRuntime() {
