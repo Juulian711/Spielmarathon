@@ -1116,7 +1116,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 // ═══════════════════════════════════════════════════════════
 const JOKER_DEFS = [
   {id:'double',  icon:'🎯', name:'Doppelt oder Nichts', desc:'Vor einem Spiel einsetzen. Landest du in der Top-Hälfte → doppelte Punkte! Verlierst du → 0 Punkte.', img:''},
-  {id:'revenge', icon:'🔁', name:'Revanche',            desc:'Das zuletzt gespielte Spiel wird sofort wiederholt. Deine alten Punkte bleiben – du kannst noch mehr holen!', img:''},
+  {id:'revenge', icon:'🔁', name:'Revanche',            desc:'Erst nach dem ersten Spiel verfügbar. Das zuletzt gespielte Spiel wird sofort wiederholt. Deine alten Punkte bleiben – du kannst noch mehr holen!', img:''},
   {id:'veto',    icon:'🗳️', name:'Veto',                desc:'Du startest mit -3 Punkten. Genau ein Spiel vor Schluss darfst du automatisch ein ganzes Spiel aus der Wertung streichen – für alle!', img:''},
   {id:'twist',   icon:'🎭', name:'Rollentausch',         desc:'Bei einem Teamspiel darfst du selbst entscheiden wer in welchem Team spielt!', img:''},
   {id:'underdog',icon:'👑', name:'Underdog-Bonus',       desc:'Automatisch: Wer bei Halbzeit auf dem letzten Platz liegt, bekommt sofort +3 Punkte geschenkt.', img:''},
@@ -2409,13 +2409,18 @@ function startGameVoteRound() {
 }
 
 function getGameVoteCount() {
-  return Object.keys(state.currentGameVotes || {}).filter(name =>
-    state.players.some(p => p.name === name)
-  ).length;
+  return state.players.filter(p => {
+    const key = getGameVotePlayerKey(p);
+    return !!(state.currentGameVotes || {})[key];
+  }).length;
 }
 
 function allGameVotesIn() {
-  return state.players.length > 0 && getGameVoteCount() >= state.players.length;
+  const requiredPlayers = (state.players || []).map(p => getGameVotePlayerKey(p));
+  const votes = state.currentGameVotes || {};
+  const allVoted = requiredPlayers.length > 0 && requiredPlayers.every(key => !!votes[key]);
+  console.log('[gameVote allVoted?]', requiredPlayers, votes, allVoted);
+  return allVoted;
 }
 
 function normalizeVotePlayerName(name) {
@@ -2423,11 +2428,20 @@ function normalizeVotePlayerName(name) {
   return String(name ?? '').trim().normalize ? String(name ?? '').trim().normalize('NFC') : String(name ?? '').trim();
 }
 
+function getGameVotePlayerKey(playerOrName) {
+  const name = typeof playerOrName === 'object' ? playerOrName?.name : playerOrName;
+  return normalizeVotePlayerName(name);
+}
+
 function findPlayerByVoteName(name, players = state.players || []) {
   const n = normalizeVotePlayerName(name);
   return players.find(p => normalizeVotePlayerName(p.name) === n)
     || players.find(p => smSafeId(p.name) === smSafeId(name))
     || null;
+}
+
+function canUseRevengeJoker(data = state) {
+  return Array.isArray(data?.history) && data.history.length > 0;
 }
 
 function getMobileVoteKey(sessionId, playerName, voteId) {
@@ -2472,7 +2486,7 @@ function renderGameVoteHost() {
   const allDone = allGameVotesIn();
   const aggregated = getShuffledGameVoteDisplayItems();
   const waitingRows = state.players.map(p => {
-    const done = !!state.currentGameVotes?.[p.name];
+    const done = !!state.currentGameVotes?.[getGameVotePlayerKey(p)];
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface);border-radius:9px">
       <span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}</span>
       <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--muted)'}">${done?'✅ hat abgestimmt':'⏳ wartet noch'}</span>
@@ -2480,7 +2494,6 @@ function renderGameVoteHost() {
   }).join('');
   const voteCards = aggregated.map(({game:g, count}, i) => `
     <div id="mk-vote-card-${i}" class="mk-vote-card" data-game-id="${esc(g.id)}">
-      ${count > 1 ? `<div class="mk-vote-count">x${count}</div>` : ''}
       <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
       <div>
         <div class="game-name">${esc(g.name)}</div>
@@ -3006,6 +3019,7 @@ function renderJokerArea() {
           const jd = getJokerDef(jstate.id);
           if (!jd) return '';
           const isSkip = jstate.id === 'skip';
+          const revengeBlocked = jstate.id === 'revenge' && !canUseRevengeJoker();
           return `<div class="joker-card ${isSkip?'joker-skip':''} ${jstate.used?'joker-used':''}">
             ${jstate.used ? '<span class="joker-badge">✓ Genutzt</span>' : ''}
             <div class="joker-visual" onclick="openJokerLightbox('${jstate.id}',event)" style="cursor:pointer" title="Details anzeigen">
@@ -3015,7 +3029,8 @@ function renderJokerArea() {
               <div class="joker-name">${jd.name}</div>
               <div class="joker-desc">${jd.desc}</div>
             </div>
-            ${!jstate.used ? `<button class="joker-use-btn" onclick="openJokerModal('${esc(p.name)}','${jstate.id}')" ${(jstate.id==='underdog'||jstate.id==='veto')?'style="display:none"':''}>Einsetzen</button>` : ''}
+            ${!jstate.used && !revengeBlocked ? `<button class="joker-use-btn" onclick="openJokerModal('${esc(p.name)}','${jstate.id}')" ${(jstate.id==='underdog'||jstate.id==='veto')?'style="display:none"':''}>Einsetzen</button>` : ''}
+            ${!jstate.used && revengeBlocked ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--muted);font-weight:700">Erst nach dem ersten Spiel verfügbar</div>` : ''}
             ${jstate.id==='underdog'&&!jstate.used ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--green);font-weight:700">⚡ Wird automatisch ausgelöst</div>` : ''}
           </div>`;
         }).join('')}
@@ -3069,6 +3084,13 @@ function showGoalReview() {
 }
 
 function openJokerModal(playerName, jokerId) {
+  if (jokerId === 'revenge' && !canUseRevengeJoker()) {
+    pendingJokerPlayer = null;
+    pendingJokerId = null;
+    showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
+    closeModal('modal-joker');
+    return;
+  }
   pendingJokerPlayer = playerName;
   pendingJokerId = jokerId;
   const jd = getJokerDef(jokerId);
@@ -3105,7 +3127,7 @@ function confirmJoker() {
   }
 
   if (j==='revenge') {
-    if (!state.history.length) { showToast('Noch kein Spiel gespielt!'); closeModal('modal-joker'); return; }
+    if (!canUseRevengeJoker()) { showToast('Revanche ist erst nach dem ersten Spiel verfügbar.'); closeModal('modal-joker'); return; }
     const last = state.history[state.history.length-1];
     const lastGame = state.games.find(g=>g.name===last.gameName);
     if (lastGame) {
@@ -5671,6 +5693,10 @@ function fbGuestRequestJoker(sessionId, playerName, jokerId) {
       showToast('Joker erst nach Marathonstart möglich!');
       return;
     }
+    if (jokerId === 'revenge' && !canUseRevengeJoker(data)) {
+      showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
+      return;
+    }
     ref.child('guestActions').push({
       type:'useJoker', playerName, jokerId, ts:Date.now()
     });
@@ -5957,7 +5983,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
   fbSessionRef.child('guestActions').off();
   fbSessionRef.child('guestActions').on('child_added', snap => {
     const action = snap.val();
-    if (!action || Date.now() - action.ts > 120000) return;
+    if (!action || Date.now() - action.ts > 120000) { snap.ref.remove(); return; }
     snap.ref.remove();
     if (action.type === 'jokerPick') {
       const p = findPlayerByVoteName(action.playerName);
@@ -5973,11 +5999,42 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       }
     }
     if (action.type === 'gameVote') {
+      console.log('[gameVote received]', action);
+      const p2 = findPlayerByVoteName(action.playerKey || action.playerName);
+      const playerKey2 = p2 ? getGameVotePlayerKey(p2) : '';
+      const optionIds2 = new Set((state.currentVoteOptions || []).map(g => g.id));
+      let rejected2 = '';
+      if (!p2) rejected2 = 'unknown player';
+      else if (state._setupPhase !== 'gameVote') rejected2 = 'not in gameVote phase';
+      else if (action.voteId !== state.currentVoteId) rejected2 = 'stale voteId';
+      else if (!optionIds2.has(action.gameId)) rejected2 = 'invalid gameId';
+      if (rejected2) {
+        console.warn('[gameVote rejected]', rejected2, action);
+        window.renderGameVoteHost();
+        fbPushState();
+        return;
+      }
+      if (!state.currentGameVotes) state.currentGameVotes = {};
+      if (state.currentGameVotes[playerKey2] && state.currentGameVotes[playerKey2] !== action.gameId) {
+        console.warn('[gameVote rejected]', 'duplicate vote', action);
+        window.renderGameVoteHost();
+        fbPushState();
+        return;
+      }
+      state.currentGameVotes[playerKey2] = action.gameId;
+      console.log('[gameVote accepted]', playerKey2, action.gameId, state.currentGameVotes);
+      window.renderGameVoteHost();
+      fbPushState();
+      saveCurrentToLS();
+      const allVoted2 = allGameVotesIn();
+      showToast(allVoted2 ? '🏁 Alle Spielwahlen sind da!' : `📱 ${p2.name} hat gewählt ✓`);
+      if (allVoted2) setTimeout(() => window.runMarioKartSelectionAnimation(), 900);
+      return;
       const p = findPlayerByVoteName(action.playerName);
       const optionIds = new Set((state.currentVoteOptions || []).map(g => g.id));
       if (p && state._setupPhase === 'gameVote' && action.voteId === state.currentVoteId && optionIds.has(action.gameId)) {
-        if (state.currentGameVotes?.[p.name]) return;
-        state.currentGameVotes[p.name] = action.gameId;
+        if (state.currentGameVotes?.[getGameVotePlayerKey(p)]) return;
+        state.currentGameVotes[getGameVotePlayerKey(p)] = action.gameId;
         window.renderGameVoteHost();
         fbPushState();
         saveCurrentToLS();
@@ -5986,6 +6043,11 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       }
     }
     if (action.type === 'useJoker') {
+      if (action.jokerId === 'revenge' && !canUseRevengeJoker()) {
+        console.warn('[joker rejected]', 'revenge before first completed game', action);
+        showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
+        return;
+      }
       openJokerModal(action.playerName, action.jokerId);
       showToast(`📱 ${action.playerName} möchte Joker einsetzen!`);
     }
@@ -6153,6 +6215,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     const curGame   = currentGame ? gameList.find(g=>g.id===currentGame.gameId) : null;
     const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
     const canUseJokers = !!data.marathonStarted && data.phase === 'marathon' && currentIdx >= 0;
+    const canUseRevenge = canUseRevengeJoker(data);
 
     c.innerHTML = `
       ${curGame ? `<div style="background:#1a1a2e;border-radius:14px;padding:14px;margin-bottom:12px;border:1px solid rgba(255,215,0,.2)">
@@ -6178,10 +6241,13 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         <div style="font-size:.65rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">🃏 Deine Joker</div>
         ${myJokers.length ? myJokers.map(j=>{
           const jd = defs.find(x=>x.id===j.id)||{icon:'🃏',name:j.id,desc:''};
+          const revengeBlocked = j.id === 'revenge' && !canUseRevenge;
+          const canUseThisJoker = !j.used && j.id !== 'underdog' && canUseJokers && !revengeBlocked;
+          const blockedLabel = revengeBlocked ? 'Erst nach<br>dem ersten Spiel' : 'Erst nach<br>Start';
           return `<div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'};cursor:pointer">
             <span style="width:44px;height:58px;border-radius:8px;overflow:hidden;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;color:#111">${smJokerVisualHtml(jd,'1.6rem')}</span>
             <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.88rem">${smMobileEsc(jd.name)}</div><div style="font-size:.72rem;color:#888;margin-top:2px">${j.used?'✓ Bereits genutzt':smMobileEsc(jd.desc)}</div></div>
-            ${(!j.used && j.id !== 'underdog' && canUseJokers) ? `<button onclick="event.stopPropagation();fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>` : (!j.used && j.id !== 'underdog' && !canUseJokers) ? `<span style="font-size:.7rem;color:#888;flex-shrink:0;text-align:right">Erst nach<br>Start</span>` : j.id==='underdog' ? `<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>` : ''}
+            ${canUseThisJoker ? `<button onclick="event.stopPropagation();fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>` : (!j.used && j.id !== 'underdog' && (!canUseJokers || revengeBlocked)) ? `<span style="font-size:.7rem;color:#888;flex-shrink:0;text-align:right">${blockedLabel}</span>` : j.id==='underdog' ? `<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>` : ''}
           </div>`;
         }).join('') : '<div style="color:#888;font-size:.85rem;text-align:center;padding:12px">Warte auf Start...</div>'}
       </div>
@@ -6256,6 +6322,7 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
   const key = getMobileVoteKey(sessionId, playerName, voteId);
   const gameId = window._mobileGameVotes?.[key];
   if (!gameId) return;
+  console.log('[gameVote send]', playerName, getGameVotePlayerKey(playerName), gameId);
   firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
     const data = snap.val();
     if (!data || data.phase !== 'gameVote' || data.currentVoteId !== voteId) return;
@@ -6266,6 +6333,7 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
     firebase.database().ref(`sessions/${sessionId}/guestActions`).push({
       type:'gameVote',
       playerName,
+      playerKey: getGameVotePlayerKey(playerName),
       voteId,
       gameId,
       ts:Date.now()
@@ -6619,13 +6687,15 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   function getFlatGameVoteEntries() {
     const options = state.currentVoteOptions || [];
     return Object.entries(state.currentGameVotes || {})
-      .map(([playerName, gameId]) => {
+      .map(([playerKey, gameId]) => {
         const game = options.find(g => g.id === gameId);
-        const player = findPlayerByVoteName(playerName);
+        const player = findPlayerByVoteName(playerKey);
         if (!game || !player) return null;
         return {
-          voteKey: normalizeVotePlayerName(player.name),
+          playerId: getGameVotePlayerKey(player),
+          voteKey: getGameVotePlayerKey(player),
           playerName: player.name,
+          playerColor: getPlayerColorHex(player.color),
           color: getPlayerColorHex(player.color),
           game,
           gameId: game.id,
@@ -6655,14 +6725,14 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const allDone = allGameVotesIn();
     const entries = getShuffledGameVoteDisplayEntries();
     const waitingRows = state.players.map(p => {
-      const done = !!state.currentGameVotes?.[p.name];
+      const done = !!state.currentGameVotes?.[getGameVotePlayerKey(p)];
       return `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface);border-radius:9px">
         <span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}</span>
         <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--muted)'}">${done?'✅ hat abgestimmt':'⏳ wartet noch'}</span>
       </div>`;
     }).join('');
     const voteCards = entries.map(({game:g, playerName, color, voteKey}, i) => `
-      <div id="mk-vote-card-${i}" class="mk-vote-card" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color}">
+      <div id="mk-vote-card-${i}" class="mk-vote-card" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color};box-shadow:0 0 0 3px ${color}55">
         <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
         <div>
           <div style="font-size:.7rem;color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.9px;margin-bottom:4px">${esc(playerName)}</div>
