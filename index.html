@@ -176,6 +176,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .mk-vote-card.active{border-color:var(--player-border);box-shadow:0 0 0 2px var(--player-border),0 0 0 4px rgba(255,215,0,.18),0 0 26px rgba(255,215,0,.45);transform:translateY(-4px) scale(1.035)}
 .mk-vote-card.dimmed{opacity:.16;filter:grayscale(1) blur(1px);transform:scale(.92)}
 .mk-vote-card.winner{z-index:4;border-color:var(--player-border);box-shadow:0 0 0 2px var(--player-border),0 0 0 5px rgba(255,215,0,.22),0 18px 50px rgba(0,0,0,.45),0 0 42px rgba(255,215,0,.55);transform:scale(1.16)}
+.mk-vote-count{position:absolute;right:8px;top:8px;background:rgba(17,17,17,.86);color:#fff;border-radius:999px;padding:4px 8px;font-weight:900;z-index:3}
 .mk-vote-cover{width:72px;height:72px;border-radius:12px;background:#111;display:flex;align-items:center;justify-content:center;font-size:2rem;overflow:hidden}
 .mk-vote-cover img{width:100%;height:100%;object-fit:cover}
 .mk-winner-moment{animation:mkWinnerPop .28s ease-out both;max-width:520px;margin:18px auto 0;text-align:center;background:linear-gradient(160deg,rgba(255,215,0,.2),rgba(233,69,96,.12));border:2px solid var(--gold);border-radius:18px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.35)}
@@ -1121,6 +1122,8 @@ const JOKER_DEFS = [
   {id:'twist',   icon:'🎭', name:'Rollentausch',         desc:'Bei einem Teamspiel darfst du selbst entscheiden wer in welchem Team spielt!', img:''},
   {id:'underdog',icon:'👑', name:'Underdog-Bonus',       desc:'Automatisch: Wer bei Halbzeit auf dem letzten Platz liegt, bekommt sofort +3 Punkte geschenkt.', img:''},
   {id:'tipster', icon:'🔮', name:'Tipp-Joker',           desc:'Tippe vor dem Spiel wer gewinnt. Richtig getippt → +4 Punkte (JgJ) oder +2 Punkte (Team/1vAll)!', img:''},
+  {id:'magnet',  icon:'🧲', name:'Magnet-Joker',         desc:'Nur im Spielwahl-Roulette: Deine Spielwahl zählt dreifach. Insgesamt 2 Einsätze.', img:''},
+  {id:'ban',     icon:'🚫', name:'Bann-Joker',           desc:'Nur im Spielwahl-Roulette: Verbanne vorgeschlagene Spiele aus der Auswahl. Insgesamt 3 Einsätze.', img:''},
 ];
 // Skip is always added separately (not selectable, always given)
 const SKIP_JOKER = {id:'skip', icon:'⏭️', name:'Skip!', desc:'Magst du das aktuelle Spiel nicht? Wirf es raus – ein neues Spiel kommt stattdessen rein!', img:''};
@@ -1160,6 +1163,7 @@ let state = {
   scores:{},
   history:[],
   jokers:{},
+  jokerUses:{},
   jokerPicks:{},
   skipped:[],
   secretGoals:{},
@@ -1221,6 +1225,7 @@ function resetMarathonRuntime(options = {}) {
   state.scores = {};
   state.history = [];
   state.jokers = {};
+  state.jokerUses = {};
   state.jokerPicks = {};
   state.skipped = [];
   state.secretGoals = {};
@@ -1310,6 +1315,7 @@ function buildSessionSnapshot(name, finalize=false) {
     plan: state.plan,
     currentIdx: state.currentIdx,
     jokers: state.jokers,
+    jokerUses: state.jokerUses || {},
     jokerPicks: state.jokerPicks,
     skipped: state.skipped || [],
     secretGoals: state.secretGoals || {},
@@ -1319,7 +1325,6 @@ function buildSessionSnapshot(name, finalize=false) {
     goalAchieved: state.goalAchieved || {},
     activeJokers: state.activeJokers || {},
     currentVoteOptions: state.currentVoteOptions || [],
-    currentGameVotes: state.currentGameVotes || {},
     currentVoteId: state.currentVoteId || null,
     currentVoteRoundId: state.currentVoteRoundId || state.currentVoteId || null,
     currentVoteWinner: state.currentVoteWinner || null,
@@ -1367,6 +1372,17 @@ function removeInvalidVetoPicks() {
     if (!Array.isArray(picks)) return;
     const idx = picks.indexOf('veto');
     if (idx >= 0) picks.splice(idx, 1);
+  });
+}
+
+function removeInvalidModeJokerPicks(source = state) {
+  if (isSelectionMode(source)) return;
+  Object.values(state.jokerPicks || {}).forEach(picks => {
+    if (!Array.isArray(picks)) return;
+    ['magnet','ban'].forEach(id => {
+      const idx = picks.indexOf(id);
+      if (idx >= 0) picks.splice(idx, 1);
+    });
   });
 }
 
@@ -2147,6 +2163,7 @@ function startMarathon() {
 // ── Joker Pick Screen ──────────────────────────────────────
 function renderJokerPickScreen() {
   removeInvalidVetoPicks();
+  removeInvalidModeJokerPicks();
   const c = document.getElementById('joker-pick-players');
   c.innerHTML = state.players.map(p => {
     const picks = state.jokerPicks[p.name] || [];
@@ -2161,7 +2178,8 @@ function renderJokerPickScreen() {
           const selected = picks.includes(jd.id);
           const othersFull = !selected && picks.length >= 2;
           const vetoDisabled = jd.id==='veto' && !canPickVetoJoker();
-          const disabled = othersFull || vetoDisabled;
+          const modeDisabled = isSelectionOnlyJoker(jd.id) && !isSelectionMode();
+          const disabled = othersFull || vetoDisabled || modeDisabled;
           const disabledTitle = vetoDisabled ? 'Nur verfügbar, wenn es mehr Spiele als Spieler gibt.' : '';
           return `<div class="joker-card joker-selectable ${selected?'joker-selected':''} ${disabled?'joker-used':''}"
             onclick="${disabled ? '' : `toggleJokerPick('${esc(p.name)}','${jd.id}')`}"
@@ -2189,6 +2207,10 @@ function renderJokerPickScreen() {
 }
 
 function toggleJokerPick(playerName, jokerId) {
+  if (isSelectionOnlyJoker(jokerId) && !isSelectionMode()) {
+    showToast('Dieser Joker ist nur im Auswahlmodus verfÃ¼gbar.');
+    return;
+  }
   if (jokerId === 'veto' && !canPickVetoJoker()) {
     showToast('Veto ist nur verfügbar, wenn es mehr Spiele als Spieler gibt.');
     return;
@@ -2216,8 +2238,9 @@ function finishJokerPick() {
     const picks = state.jokerPicks[p.name];
     state.jokers[p.name] = [
       ...picks.map(id => ({id, used:false})),
-      {id:'skip', used:false},
+      ...(shouldGiveFreeSkip() ? [{id:'skip', used:false}] : []),
     ];
+    state.jokerUses[getGameVotePlayerKey(p)] = getModeJokerUsesForPicks(picks);
   });
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
     showScreen('screen-joker-pick');
@@ -2447,6 +2470,78 @@ function findPlayerByVoteName(name, players = state.players || []) {
 
 function canUseRevengeJoker(data = state) {
   return Array.isArray(data?.history) && data.history.length > 0;
+}
+
+function isSelectionMode(source = state) {
+  return normalizeMarathonMode(source?.marathonMode || source?.selectionMode) === 'marioKart';
+}
+
+function shouldGiveFreeSkip(source = state) {
+  return !isSelectionMode(source);
+}
+
+function isSelectionOnlyJoker(jokerId) {
+  return jokerId === 'magnet' || jokerId === 'ban';
+}
+
+function getModeJokerInitialUses(jokerId) {
+  if (jokerId === 'magnet') return 2;
+  if (jokerId === 'ban') return 3;
+  return 0;
+}
+
+function getModeJokerUsesForPicks(picks = []) {
+  const uses = {};
+  if (picks.includes('magnet')) uses.magnet = 2;
+  if (picks.includes('ban')) uses.ban = 3;
+  return uses;
+}
+
+function ensureJokerUsesForPlayer(playerName) {
+  const playerKey = getGameVotePlayerKey(playerName);
+  if (!state.jokerUses) state.jokerUses = {};
+  if (!state.jokerUses[playerKey]) {
+    const owned = (state.jokers?.[playerName] || []).map(j => j.id);
+    state.jokerUses[playerKey] = getModeJokerUsesForPicks(owned);
+  }
+  return state.jokerUses[playerKey];
+}
+
+function playerOwnsJoker(playerName, jokerId) {
+  return (state.jokers?.[playerName] || []).some(j => j.id === jokerId);
+}
+
+function makeGameVoteRecord(player, action) {
+  return {
+    playerKey: getGameVotePlayerKey(player),
+    playerName: player.name,
+    gameId: action.gameId || null,
+    modeJoker: action.modeJoker || null,
+    bannedGameIds: Array.isArray(action.bannedGameIds) ? action.bannedGameIds : [],
+    ts: action.ts || Date.now()
+  };
+}
+
+function getVoteRecord(playerKey, rawVote) {
+  const player = findPlayerByVoteName(playerKey);
+  if (rawVote && typeof rawVote === 'object') {
+    return {
+      playerKey,
+      playerName: rawVote.playerName || player?.name || playerKey,
+      gameId: rawVote.gameId || null,
+      modeJoker: rawVote.modeJoker || null,
+      bannedGameIds: Array.isArray(rawVote.bannedGameIds) ? rawVote.bannedGameIds : [],
+      ts: rawVote.ts || 0
+    };
+  }
+  return {
+    playerKey,
+    playerName: player?.name || playerKey,
+    gameId: rawVote || null,
+    modeJoker: null,
+    bannedGameIds: [],
+    ts: 0
+  };
 }
 
 function getMobileVoteKey(sessionId, playerName, voteId) {
@@ -3090,6 +3185,10 @@ function showGoalReview() {
 }
 
 function openJokerModal(playerName, jokerId) {
+  if (jokerId === 'skip' && !shouldGiveFreeSkip()) {
+    showToast('Skip gibt es nur im Zufallsmodus.');
+    return;
+  }
   if (jokerId === 'revenge' && !canUseRevengeJoker()) {
     pendingJokerPlayer = null;
     pendingJokerId = null;
@@ -3438,6 +3537,7 @@ function loadSession(id) {
   state.plan       = s.plan    || [];
   state.currentIdx = s.currentIdx ?? -1;
   state.jokers     = s.jokers  || {};
+  state.jokerUses  = s.jokerUses || {};
   state.timeLimit  = s.timeLimit || 120;
   state.marathonMode = normalizeMarathonMode(s.marathonMode);
   state.startTime  = s.startTime || Date.now();
@@ -3856,7 +3956,7 @@ function saveCurrentToLS() {
     id:'__autosave__', name:'Autosave', date:new Date().toISOString(),
     finalized:false, players:state.players, scores:state.scores,
     history:state.history, plan:state.plan, currentIdx:state.currentIdx,
-    jokers:state.jokers, timeLimit:state.timeLimit, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
+    jokers:state.jokers, jokerUses:state.jokerUses || {}, timeLimit:state.timeLimit, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
     games:state.games, jokerPicks:state.jokerPicks, skipped:state.skipped,
     gameCategories:state.gameCategories || [],
     currentVoteOptions:state.currentVoteOptions || [], currentGameVotes:state.currentGameVotes || {}, currentVoteId:state.currentVoteId || null, currentVoteRoundId:state.currentVoteRoundId || state.currentVoteId || null, currentVoteWinner:state.currentVoteWinner || null,
@@ -5180,12 +5280,14 @@ let secretGoalQueue = [];
 let secretGoalIdx = 0;
 
 function startSecretGoals() {
+  removeInvalidModeJokerPicks();
   const missing = state.players.filter(p => (state.jokerPicks[p.name]||[]).length < 2);
   if (missing.length) { showToast(`${missing.map(p=>p.name).join(', ')} müssen noch 2 Joker wählen!`); return; }
   // Build jokers
   state.players.forEach(p => {
     const picks = state.jokerPicks[p.name];
-    state.jokers[p.name] = [...picks.map(id=>({id,used:false})),{id:'skip',used:false}];
+    state.jokers[p.name] = [...picks.map(id=>({id,used:false})), ...(shouldGiveFreeSkip() ? [{id:'skip',used:false}] : [])];
+    state.jokerUses[getGameVotePlayerKey(p)] = getModeJokerUsesForPicks(picks);
     // Veto penalty: -3 start points
     if (picks.includes('veto')) {
       state.scores[p.name] = (state.scores[p.name]||0) - 3;
@@ -5469,6 +5571,7 @@ function fbPushState() {
     plan:           state.plan,
     currentIdx:     state.currentIdx,
     jokers:         state.jokers,
+    jokerUses:      state.jokerUses || {},
     secretGoals:    cleanGoals,
     goalAchieved:   state.goalAchieved,
     activeJokers:   state.activeJokers,
@@ -5500,6 +5603,7 @@ function fbJoinSession(sessionId) {
     state.plan       = data.plan       || state.plan;
     state.currentIdx = data.currentIdx ?? state.currentIdx;
     state.jokers     = data.jokers     || state.jokers;
+    state.jokerUses  = data.jokerUses  || state.jokerUses;
     state.secretGoals= data.secretGoals|| state.secretGoals;
     state.goalAchieved= data.goalAchieved||state.goalAchieved;
     state.activeJokers= data.activeJokers||state.activeJokers;
@@ -5857,6 +5961,7 @@ window.startMarathon = function startMarathon() {
   state.startTime = Date.now();
   state.scores = {};
   state.jokers = {};
+  state.jokerUses = {};
   state.history = [];
   state.activeJokers = {};
   state.plan = [];
@@ -5968,6 +6073,7 @@ window.fbPushState = function fbPushState() {
     plan: state.plan,
     currentIdx: state.currentIdx,
     jokers: state.jokers,
+    jokerUses: state.jokerUses || {},
     jokerPicks: state.jokerPicks,
     jokerDefs: smGetJokerDefsForSync(),
     secretGoals: cleanGoals,
@@ -6007,7 +6113,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       const p = findPlayerByVoteName(action.playerName);
       const validIds = new Set(JOKER_DEFS.map(j=>j.id));
       const picks = Array.isArray(action.picks)
-        ? action.picks.filter(id => validIds.has(id) && (id !== 'veto' || canPickVetoJoker())).slice(0,2)
+        ? action.picks.filter(id => validIds.has(id) && (id !== 'veto' || canPickVetoJoker()) && (isSelectionMode() || !isSelectionOnlyJoker(id))).slice(0,2)
         : [];
       if (p && picks.length === 2) {
         state.jokerPicks[p.name] = picks;
@@ -6024,11 +6130,19 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       const optionIds = new Set((state.currentVoteOptions || []).map(g => g.id));
       const actionRoundId = action.voteRoundId || action.voteId || null;
       const currentRoundId = state.currentVoteRoundId || state.currentVoteId || null;
+      const modeJoker = action.modeJoker === 'magnet' ? 'magnet' : action.modeJoker === 'ban' ? 'ban' : null;
+      const bannedGameIds = Array.isArray(action.bannedGameIds)
+        ? [...new Set(action.bannedGameIds)].filter(id => optionIds.has(id))
+        : [];
       let ignored = '';
       if (!p) ignored = 'unknown player';
       else if (state._setupPhase !== 'gameVote') ignored = 'not in gameVote phase';
       else if (!actionRoundId || actionRoundId !== currentRoundId) ignored = 'stale voteRoundId';
-      else if (!optionIds.has(action.gameId)) ignored = 'invalid gameId';
+      else if (modeJoker === 'ban' && !bannedGameIds.length) ignored = 'invalid bannedGameIds';
+      else if (modeJoker !== 'ban' && !optionIds.has(action.gameId)) ignored = 'invalid gameId';
+      else if (modeJoker && !playerOwnsJoker(p.name, modeJoker)) ignored = 'joker not owned';
+      else if (modeJoker === 'magnet' && (ensureJokerUsesForPlayer(p.name).magnet || 0) < 1) ignored = 'no magnet uses left';
+      else if (modeJoker === 'ban' && (ensureJokerUsesForPlayer(p.name).ban || 0) < bannedGameIds.length) ignored = 'not enough ban uses left';
       if (ignored) {
         console.warn('[vote ignored]', ignored, action);
         window.renderGameVoteHost();
@@ -6045,8 +6159,21 @@ window.fbListenGuestActions = function fbListenGuestActions() {
         markProcessed();
         return;
       }
-      state.currentGameVotes = { ...state.currentGameVotes, [playerKey]: action.gameId };
-      console.log('[vote accepted]', playerKey, action.gameId, state.currentGameVotes);
+      const modeUses = ensureJokerUsesForPlayer(p.name);
+      if (modeJoker === 'magnet') modeUses.magnet -= 1;
+      if (modeJoker === 'ban') modeUses.ban -= bannedGameIds.length;
+      if (modeJoker && (modeUses[modeJoker] || 0) <= 0) {
+        const ownedJoker = state.jokers?.[p.name]?.find(j => j.id === modeJoker);
+        if (ownedJoker) ownedJoker.used = true;
+      }
+      const voteRecord = makeGameVoteRecord(p, {
+        ...action,
+        modeJoker,
+        bannedGameIds,
+        gameId: modeJoker === 'ban' ? null : action.gameId
+      });
+      state.currentGameVotes = { ...state.currentGameVotes, [playerKey]: voteRecord };
+      console.log('[vote accepted]', playerKey, modeJoker === 'ban' ? bannedGameIds : action.gameId, state.currentGameVotes);
       window.renderGameVoteHost();
       fbPushState();
       saveCurrentToLS();
@@ -6057,6 +6184,12 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       return;
     }
     if (action.type === 'useJoker') {
+      if (action.jokerId === 'skip' && !shouldGiveFreeSkip()) {
+        console.warn('[joker rejected]', 'skip outside random mode', action);
+        showToast('Skip gibt es nur im Zufallsmodus.');
+        markProcessed();
+        return;
+      }
       if (action.jokerId === 'revenge' && !canUseRevengeJoker()) {
         console.warn('[joker rejected]', 'revenge before first completed game', action);
         showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
@@ -6146,19 +6279,37 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       const currentVoteRoundId = data.currentVoteRoundId || data.currentVoteId || '';
       if (!window._mobileGameVotes) window._mobileGameVotes = {};
       if (!window._mobileGameVoteSubmitted) window._mobileGameVoteSubmitted = {};
+      if (!window._mobileGameVoteMode) window._mobileGameVoteMode = {};
+      if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
+      if (!window._mobileGameVoteBanLimit) window._mobileGameVoteBanLimit = {};
       const voteKey = getMobileVoteKey(sessionId, playerName, currentVoteRoundId);
       const alreadySaved = votedPlayers.some(n => normalizeVotePlayerName(n) === normalizeVotePlayerName(playerName)) || !!window._mobileGameVoteSubmitted[voteKey];
+      const playerKey = getGameVotePlayerKey(playerName);
+      const voteUses = data.jokerUses?.[playerKey] || {};
+      const ownedJokers = data.jokers?.[playerName] || [];
+      const ownsMagnet = ownedJokers.some(j => j.id === 'magnet');
+      const ownsBan = ownedJokers.some(j => j.id === 'ban');
+      const magnetLeft = ownsMagnet ? (voteUses.magnet ?? getModeJokerInitialUses('magnet')) : 0;
+      const banLeft = ownsBan ? (voteUses.ban ?? getModeJokerInitialUses('ban')) : 0;
+      window._mobileGameVoteBanLimit[voteKey] = banLeft;
+      const voteMode = window._mobileGameVoteMode[voteKey] || 'vote';
+      const bannedIds = window._mobileGameVoteBans[voteKey] || [];
       const selectedGameId = window._mobileGameVotes[voteKey] || '';
       const shownVoteCount = Math.max(votedPlayers.length, alreadySaved ? 1 : 0);
+      const confirmEnabled = !alreadySaved && (voteMode === 'ban' ? bannedIds.length > 0 : !!selectedGameId);
       c.innerHTML = `
         <div style="background:#1a1a2e;border-radius:16px;padding:14px;margin-bottom:12px;border:2px solid ${alreadySaved?'#4ecdc4':'rgba(255,215,0,.25)'}">
           <div style="font-size:.7rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Spielauswahl</div>
           <div style="font-size:.9rem;line-height:1.5;color:#aaa">Wähle genau ein Spiel für die nächste Runde. Andere sehen nicht, welches Spiel du gewählt hast.</div>
           ${alreadySaved?'<div style="margin-top:8px;color:#4ecdc4;font-weight:800">✅ Auswahl gespeichert · Warte auf andere Spieler</div>':''}
         </div>
+        ${(!alreadySaved && (magnetLeft > 0 || banLeft > 0)) ? `<div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px">
+          ${magnetLeft > 0 ? `<button onclick="smMobileSetVoteMode('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${voteMode === 'magnet' ? 'vote' : 'magnet'}')" style="border:2px solid ${voteMode==='magnet'?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:${voteMode==='magnet'?'#2d2508':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🧲 Magnet-Joker <span style="color:#aaa;font-weight:700">(${magnetLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">Deine Spielwahl zählt dreifach.</div></button>` : ''}
+          ${banLeft > 0 ? `<button onclick="smMobileSetVoteMode('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${voteMode === 'ban' ? 'vote' : 'ban'}')" style="border:2px solid ${voteMode==='ban'?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:${voteMode==='ban'?'#2d2508':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🚫 Bann-Joker <span style="color:#aaa;font-weight:700">(${banLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">${voteMode==='ban' ? `Wähle bis zu ${banLeft} Spiele, die du verbannen möchtest.` : 'Bann-Modus aktivieren.'}</div></button>` : ''}
+        </div>` : ''}
         <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
           ${options.length ? options.map(g => {
-            const selected = selectedGameId === g.id;
+            const selected = voteMode === 'ban' ? bannedIds.includes(g.id) : selectedGameId === g.id;
             return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`}"
               style="display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${alreadySaved && !selected ? .7 : 1}">
               <div style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem">
@@ -6171,7 +6322,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
             </button>`;
           }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>'}
         </div>
-        <button id="mobile-game-vote-confirm" onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="width:100%;border:none;border-radius:12px;background:${selectedGameId&&!alreadySaved?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${selectedGameId&&!alreadySaved?'':'disabled'}>
+        <button id="mobile-game-vote-confirm" onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="width:100%;border:none;border-radius:12px;background:${confirmEnabled?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${confirmEnabled?'':'disabled'}>
           ${alreadySaved?'✅ Auswahl gespeichert':selectedGameId?'Bestätigen':'Ein Spiel auswählen'}
         </button>
         <div style="font-size:.72rem;color:#777;text-align:center;margin-top:10px">${shownVoteCount} von ${(data.players||[]).length} haben gewählt.</div>`;
@@ -6180,7 +6331,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
 
     const defs = data.jokerDefs || smGetJokerDefsForSync();
     window._smMobileJokerDefs = defs;
-    const pickDefs = defs.filter(j => j.id !== 'skip');
+    const pickDefs = defs.filter(j => j.id !== 'skip' && (isSelectionMode(data) || !isSelectionOnlyJoker(j.id)));
     const savedPicks = data.jokerPicks?.[playerName] || [];
     if (!window._mobilePicks) window._mobilePicks = {};
     if (!window._mobilePicks[sessionId + playerName]) window._mobilePicks[sessionId + playerName] = [...savedPicks];
@@ -6220,7 +6371,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         <button onclick="smMobileSubmitJokerPick('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}')" style="width:100%;border:none;border-radius:12px;background:${currentPicks.length===2?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${currentPicks.length===2?'':'disabled'}>
           ${currentPicks.length===2?'✅ Auswahl geheim speichern':currentPicks.length+'/2 gewählt'}
         </button>
-        <div style="font-size:.72rem;color:#777;text-align:center;margin-top:10px">Skip-Joker bekommst du automatisch gratis dazu.</div>`;
+        <div style="font-size:.72rem;color:#777;text-align:center;margin-top:10px">${shouldGiveFreeSkip(data) ? 'Skip-Joker bekommst du automatisch gratis dazu.' : 'Im Spielwahl-Roulette gibt es keinen kostenlosen Skip-Joker.'}</div>`;
       return;
     }
 
@@ -6262,12 +6413,13 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         ${myJokers.length ? myJokers.map(j=>{
           const jd = defs.find(x=>x.id===j.id)||{icon:'🃏',name:j.id,desc:''};
           const revengeBlocked = j.id === 'revenge' && !canUseRevenge;
-          const canUseThisJoker = !j.used && j.id !== 'underdog' && canUseJokers && !revengeBlocked;
-          const blockedLabel = revengeBlocked ? 'Erst nach<br>dem ersten Spiel' : 'Erst nach<br>Start';
+          const modeOnlyBlocked = isSelectionOnlyJoker(j.id);
+          const canUseThisJoker = !j.used && j.id !== 'underdog' && canUseJokers && !revengeBlocked && !modeOnlyBlocked;
+          const blockedLabel = revengeBlocked ? 'Erst nach<br>dem ersten Spiel' : modeOnlyBlocked ? 'Nur in der<br>Spielauswahl' : 'Erst nach<br>Start';
           return `<div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'};cursor:pointer">
             <span style="width:44px;height:58px;border-radius:8px;overflow:hidden;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;color:#111">${smJokerVisualHtml(jd,'1.6rem')}</span>
             <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.88rem">${smMobileEsc(jd.name)}</div><div style="font-size:.72rem;color:#888;margin-top:2px">${j.used?'✓ Bereits genutzt':smMobileEsc(jd.desc)}</div></div>
-            ${canUseThisJoker ? `<button onclick="event.stopPropagation();fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>` : (!j.used && j.id !== 'underdog' && (!canUseJokers || revengeBlocked)) ? `<span style="font-size:.7rem;color:#888;flex-shrink:0;text-align:right">${blockedLabel}</span>` : j.id==='underdog' ? `<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>` : ''}
+            ${canUseThisJoker ? `<button onclick="event.stopPropagation();fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>` : (!j.used && j.id !== 'underdog' && (!canUseJokers || revengeBlocked || modeOnlyBlocked)) ? `<span style="font-size:.7rem;color:#888;flex-shrink:0;text-align:right">${blockedLabel}</span>` : j.id==='underdog' ? `<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>` : ''}
           </div>`;
         }).join('') : '<div style="color:#888;font-size:.85rem;text-align:center;padding:12px">Warte auf Start...</div>'}
       </div>
@@ -6283,6 +6435,10 @@ window.smMobileToggleJoker = function smMobileToggleJoker(sessionId, playerName,
   firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
     const data = snap.val();
     if (!data) return;
+    if (isSelectionOnlyJoker(jokerId) && !isSelectionMode(data)) {
+      showToast('Dieser Joker ist nur im Auswahlmodus verfÃ¼gbar.');
+      return;
+    }
     if (jokerId === 'veto' && !canPickVetoJoker(data)) {
       const vetoIdx = picks.indexOf('veto');
       if (vetoIdx >= 0) picks.splice(vetoIdx, 1);
@@ -6310,6 +6466,10 @@ window.smMobileSubmitJokerPick = function smMobileSubmitJokerPick(sessionId, pla
   firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
     const data = snap.val();
     if (!data) return;
+    if (!isSelectionMode(data) && picks.some(id => isSelectionOnlyJoker(id))) {
+      showToast('Magnet und Bann sind nur im Auswahlmodus verfÃ¼gbar.');
+      return;
+    }
     if (picks.includes('veto') && !canPickVetoJoker(data)) {
       picks.splice(picks.indexOf('veto'), 1);
       showToast('Veto ist nur verfügbar, wenn es mehr Spiele als Spieler gibt.');
@@ -6323,7 +6483,32 @@ window.smMobileSubmitJokerPick = function smMobileSubmitJokerPick(sessionId, pla
 
 window.smMobilePickGameVote = function smMobilePickGameVote(sessionId, playerName, voteId, gameId) {
   if (!window._mobileGameVotes) window._mobileGameVotes = {};
+  if (!window._mobileGameVoteMode) window._mobileGameVoteMode = {};
+  if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
   const key = getMobileVoteKey(sessionId, playerName, voteId);
+  const mode = window._mobileGameVoteMode[key] || 'vote';
+  if (mode === 'ban') {
+    const bans = window._mobileGameVoteBans[key] || (window._mobileGameVoteBans[key] = []);
+    const idx = bans.indexOf(gameId);
+    if (idx >= 0) bans.splice(idx, 1);
+    else {
+      const limit = window._mobileGameVoteBanLimit?.[key] || 1;
+      if (bans.length >= limit) return;
+      bans.push(gameId);
+    }
+    document.querySelectorAll('[data-mobile-vote-option]').forEach(btn => {
+      const selected = bans.includes(btn.getAttribute('data-mobile-vote-option'));
+      btn.style.borderColor = selected ? '#ffd700' : 'rgba(255,255,255,.12)';
+      btn.style.background = selected ? 'linear-gradient(160deg,#2d2508,#1a1a2e)' : '#1a1a2e';
+    });
+    const confirm = document.getElementById('mobile-game-vote-confirm');
+    if (confirm) {
+      confirm.disabled = bans.length === 0;
+      confirm.style.background = bans.length ? '#e94560' : '#555';
+      confirm.textContent = bans.length ? 'Bann bestätigen' : 'Spiele zum Bannen auswählen';
+    }
+    return;
+  }
   window._mobileGameVotes[key] = gameId;
   document.querySelectorAll('[data-mobile-vote-option]').forEach(btn => {
     const selected = btn.getAttribute('data-mobile-vote-option') === gameId;
@@ -6338,12 +6523,28 @@ window.smMobilePickGameVote = function smMobilePickGameVote(sessionId, playerNam
   }
 };
 
+window.smMobileSetVoteMode = function smMobileSetVoteMode(sessionId, playerName, voteId, mode) {
+  if (!window._mobileGameVoteMode) window._mobileGameVoteMode = {};
+  const key = getMobileVoteKey(sessionId, playerName, voteId);
+  window._mobileGameVoteMode[key] = mode || 'vote';
+  if (mode === 'ban') {
+    if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
+    window._mobileGameVotes[key] = '';
+  } else {
+    if (window._mobileGameVoteBans) window._mobileGameVoteBans[key] = [];
+  }
+  renderMobilePlayerView(sessionId, playerName);
+};
+
 window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playerName, voteId) {
   const key = getMobileVoteKey(sessionId, playerName, voteId);
   const gameId = window._mobileGameVotes?.[key];
-  if (!gameId) return;
   const playerKey = getGameVotePlayerKey(playerName);
   const voteRoundId = voteId;
+  const modeJoker = window._mobileGameVoteMode?.[key] === 'magnet' ? 'magnet' : window._mobileGameVoteMode?.[key] === 'ban' ? 'ban' : null;
+  const bannedGameIds = modeJoker === 'ban' ? [...(window._mobileGameVoteBans?.[key] || [])] : [];
+  if (modeJoker === 'ban' && !bannedGameIds.length) return;
+  if (modeJoker !== 'ban' && !gameId) return;
   console.log('[gameVote send]', voteRoundId, playerKey, gameId);
   if (!window._mobileGameVoteSubmitted) window._mobileGameVoteSubmitted = {};
   if (window._mobileGameVoteSubmitted[key]) return;
@@ -6359,7 +6560,10 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
     const data = snap.val();
     const currentRoundId = data?.currentVoteRoundId || data?.currentVoteId || null;
     if (!data || data.phase !== 'gameVote' || currentRoundId !== voteRoundId) throw new Error('Abstimmung ist nicht mehr aktiv.');
-    const valid = (data.currentVoteOptions || []).some(g => g.id === gameId);
+    const optionIds = new Set((data.currentVoteOptions || []).map(g => g.id));
+    const valid = modeJoker === 'ban'
+      ? bannedGameIds.length > 0 && bannedGameIds.every(id => optionIds.has(id))
+      : optionIds.has(gameId);
     if (!valid) throw new Error('Ungültige Spielauswahl.');
     return firebase.database().ref(`sessions/${sessionId}/guestActions`).push({
       type:'gameVote',
@@ -6367,7 +6571,9 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
       playerKey,
       voteId,
       voteRoundId,
-      gameId,
+      gameId: modeJoker === 'ban' ? null : gameId,
+      modeJoker,
+      bannedGameIds,
       ts:Date.now()
     });
   }).then(actionRef => {
@@ -6564,7 +6770,8 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     state._vetoPenaltyApplied = state._vetoPenaltyApplied || {};
     state.players.forEach(p => {
       const picks = state.jokerPicks[p.name] || [];
-      state.jokers[p.name] = [...picks.map(id => ({id, used:false})), {id:'skip', used:false}];
+      state.jokers[p.name] = [...picks.map(id => ({id, used:false})), ...(shouldGiveFreeSkip() ? [{id:'skip', used:false}] : [])];
+      state.jokerUses[getGameVotePlayerKey(p)] = getModeJokerUsesForPicks(picks);
       if (picks.includes('veto') && !state._vetoPenaltyApplied[p.name]) {
         state.scores[p.name] = (state.scores[p.name] || 0) - 3;
         state._vetoPenaltyApplied[p.name] = true;
@@ -6648,7 +6855,8 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     state._vetoPenaltyApplied = state._vetoPenaltyApplied || {};
     state.players.forEach(p => {
       const picks = state.jokerPicks[p.name] || [];
-      state.jokers[p.name] = [...picks.map(id => ({id, used:false})), {id:'skip', used:false}];
+      state.jokers[p.name] = [...picks.map(id => ({id, used:false})), ...(shouldGiveFreeSkip() ? [{id:'skip', used:false}] : [])];
+      state.jokerUses[getGameVotePlayerKey(p)] = getModeJokerUsesForPicks(picks);
       if (picks.includes('veto') && !state._vetoPenaltyApplied[p.name]) {
         state.scores[p.name] = (state.scores[p.name] || 0) - 3;
         state._vetoPenaltyApplied[p.name] = true;
@@ -6706,6 +6914,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
 
   window.startSecretGoals = function startSecretGoals(){
     removeInvalidVetoPicks();
+    removeInvalidModeJokerPicks();
     const missing = state.players.filter(p => (state.jokerPicks[p.name] || []).length < 2);
     if (missing.length) {
       showToast(`${missing.map(p => p.name).join(', ')} müssen noch 2 Joker wählen!`);
@@ -6760,22 +6969,54 @@ document.addEventListener('sm-mobile-local-refresh', e => {
 
   function getFlatGameVoteEntries() {
     const options = state.currentVoteOptions || [];
-    return Object.entries(state.currentGameVotes || {})
-      .map(([playerKey, gameId]) => {
-        const game = options.find(g => g.id === gameId);
-        const player = findPlayerByVoteName(playerKey);
-        if (!game || !player) return null;
-        return {
-          playerId: getGameVotePlayerKey(player),
-          voteKey: getGameVotePlayerKey(player),
-          playerName: player.name,
-          playerColor: getPlayerColorHex(player.color),
-          color: getPlayerColorHex(player.color),
-          game,
-          gameId: game.id,
-        };
-      })
-      .filter(Boolean);
+    const records = Object.entries(state.currentGameVotes || {})
+      .map(([playerKey, raw]) => getVoteRecord(playerKey, raw));
+    const bansByGame = {};
+    records.filter(r => r.modeJoker === 'ban').forEach(r => {
+      r.bannedGameIds.forEach(gameId => {
+        if (!bansByGame[gameId]) bansByGame[gameId] = [];
+        bansByGame[gameId].push(r);
+      });
+    });
+    const entries = [];
+    records.forEach(r => {
+      const player = findPlayerByVoteName(r.playerKey || r.playerName);
+      const color = getPlayerColorHex(player?.color);
+      if (r.modeJoker === 'ban') {
+        r.bannedGameIds.forEach((gameId, i) => {
+          const game = options.find(g => g.id === gameId);
+          if (!game) return;
+          entries.push({
+            voteKey: `${r.playerKey}-ban-${gameId}-${i}`,
+            playerName: r.playerName,
+            color,
+            game,
+            gameId,
+            disabled: true,
+            jokerBadge: '🚫 Bann-Joker',
+            bannedBy: r.playerName,
+          });
+        });
+        return;
+      }
+      const game = options.find(g => g.id === r.gameId);
+      if (!game) return;
+      const base = {
+        voteKey: r.playerKey,
+        playerName: r.playerName,
+        color,
+        game,
+        gameId: game.id,
+        disabled: !!bansByGame[game.id],
+        bannedBy: (bansByGame[game.id] || []).map(b => b.playerName).join(', '),
+      };
+      entries.push(base);
+      if (r.modeJoker === 'magnet') {
+        entries.push({...base, voteKey:`${r.playerKey}-magnet-1`, jokerBadge:'🧲 Magnet-Joker'});
+        entries.push({...base, voteKey:`${r.playerKey}-magnet-2`, jokerBadge:'🧲 Magnet-Joker'});
+      }
+    });
+    return entries;
   }
 
   function getShuffledGameVoteDisplayEntries() {
@@ -6805,8 +7046,10 @@ document.addEventListener('sm-mobile-local-refresh', e => {
         <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--muted)'}">${done?'✅ hat abgestimmt':'⏳ wartet noch'}</span>
       </div>`;
     }).join('');
-    const voteCards = entries.map(({game:g, playerName, color, voteKey}, i) => `
-      <div id="mk-vote-card-${i}" class="mk-vote-card" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color};box-shadow:0 0 0 3px ${color}55">
+    const voteCards = entries.map(({game:g, playerName, color, voteKey, disabled, jokerBadge, bannedBy}, i) => `
+      <div id="mk-vote-card-${i}" class="mk-vote-card ${disabled?'dimmed':''}" data-disabled="${disabled?'1':'0'}" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color};box-shadow:0 0 0 3px ${color}55;${disabled?'filter:grayscale(1);opacity:.42':''}">
+        ${jokerBadge ? `<div class="mk-vote-count" style="font-size:.66rem">${esc(jokerBadge)}</div>` : ''}
+        ${disabled && bannedBy ? `<div class="mk-vote-count" style="font-size:.62rem;right:8px;top:38px;background:#e94560">🚫 ${esc(bannedBy)}</div>` : ''}
         <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
         <div>
           <div style="font-size:.7rem;color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.9px;margin-bottom:4px">${esc(playerName)}</div>
@@ -6839,11 +7082,19 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     if (state._gameVoteAnimating) return;
     state._gameVoteAnimating = true;
     const entries = getShuffledGameVoteDisplayEntries();
-    if (!entries.length) {
+    const activeEntries = entries.filter(e => !e.disabled);
+    if (!activeEntries.length) {
       state._gameVoteAnimating = false;
+      showToast('Alle Spiele wurden gebannt – neue Spielauswahl startet!');
+      state.currentGameVotes = {};
+      state.currentVoteOptions = [];
+      state.currentVoteDisplayOrder = [];
+      state.currentVoteId = null;
+      state.currentVoteRoundId = null;
+      setTimeout(() => startGameVoteRound(), 900);
       return;
     }
-    const winnerEntry = pickRandom(entries);
+    const winnerEntry = pickRandom(activeEntries);
     const durationMs = 5000 + Math.floor(Math.random() * 7000);
     const tickCount = Math.max(20, Math.min(44, Math.round(durationMs / 220)));
     const intervalCount = Math.max(1, tickCount - 1);
@@ -6854,7 +7105,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const weightSum = weights.reduce((sum, value) => sum + value, 0);
     const delays = weights.map(value => Math.max(45, Math.round(durationMs * value / weightSum)));
     const sequence = [];
-    for (let i = 0; i < tickCount - 1; i++) sequence.push(pickRandom(entries));
+    for (let i = 0; i < tickCount - 1; i++) sequence.push(pickRandom(activeEntries));
     sequence.push(winnerEntry);
     const cards = [...document.querySelectorAll('.mk-vote-card')];
     const result = document.getElementById('result-input-area');
@@ -6864,10 +7115,11 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const step = () => {
       const entry = sequence[tick];
       cards.forEach(card => {
+        const isDisabled = card.dataset.disabled === '1';
         const active = card.dataset.voteKey === entry.voteKey;
-        card.classList.toggle('active', active);
+        card.classList.toggle('active', active && !isDisabled);
         card.classList.toggle('winner', false);
-        card.classList.toggle('dimmed', false);
+        card.classList.toggle('dimmed', isDisabled);
       });
       playMKTikSound(tick / Math.max(sequence.length - 1, 1));
       tick++;
@@ -6888,10 +7140,11 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const cards = [...document.querySelectorAll('.mk-vote-card')];
     const winnerColor = winnerEntry?.color || '#ffd700';
     cards.forEach(card => {
+      const isDisabled = card.dataset.disabled === '1';
       const winner = winnerEntry ? card.dataset.voteKey === winnerEntry.voteKey : card.dataset.gameId === gameId;
-      card.classList.toggle('winner', winner);
-      card.classList.toggle('dimmed', !winner);
-      card.classList.toggle('active', winner);
+      card.classList.toggle('winner', winner && !isDisabled);
+      card.classList.toggle('dimmed', isDisabled || !winner);
+      card.classList.toggle('active', winner && !isDisabled);
     });
     const info = document.getElementById('current-game-info');
     if (info && g) {
