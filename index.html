@@ -6139,6 +6139,8 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       else if (state._setupPhase !== 'gameVote') ignored = 'not in gameVote phase';
       else if (!actionRoundId || actionRoundId !== currentRoundId) ignored = 'stale voteRoundId';
       else if (modeJoker === 'ban' && !bannedGameIds.length) ignored = 'invalid bannedGameIds';
+      else if (modeJoker === 'ban' && !optionIds.has(action.gameId)) ignored = 'invalid favorite gameId';
+      else if (modeJoker === 'ban' && bannedGameIds.includes(action.gameId)) ignored = 'favorite is banned by same player';
       else if (modeJoker !== 'ban' && !optionIds.has(action.gameId)) ignored = 'invalid gameId';
       else if (modeJoker && !playerOwnsJoker(p.name, modeJoker)) ignored = 'joker not owned';
       else if (modeJoker === 'magnet' && (ensureJokerUsesForPlayer(p.name).magnet || 0) < 1) ignored = 'no magnet uses left';
@@ -6170,7 +6172,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
         ...action,
         modeJoker,
         bannedGameIds,
-        gameId: modeJoker === 'ban' ? null : action.gameId
+        gameId: action.gameId
       });
       state.currentGameVotes = { ...state.currentGameVotes, [playerKey]: voteRecord };
       console.log('[vote accepted]', playerKey, modeJoker === 'ban' ? bannedGameIds : action.gameId, state.currentGameVotes);
@@ -6296,7 +6298,42 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       const bannedIds = window._mobileGameVoteBans[voteKey] || [];
       const selectedGameId = window._mobileGameVotes[voteKey] || '';
       const shownVoteCount = Math.max(votedPlayers.length, alreadySaved ? 1 : 0);
-      const confirmEnabled = !alreadySaved && (voteMode === 'ban' ? bannedIds.length > 0 : !!selectedGameId);
+      const ownFavoriteIsBanned = voteMode === 'ban' && !!selectedGameId && bannedIds.includes(selectedGameId);
+      const confirmEnabled = !alreadySaved && (voteMode === 'ban'
+        ? bannedIds.length > 0 && !!selectedGameId && !ownFavoriteIsBanned
+        : !!selectedGameId);
+      const gameButtonHtml = (g, selected, action, marker, blocked) => `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved || blocked ? '' : action}"
+        style="position:relative;display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${(alreadySaved && !selected) || blocked ? .55 : 1}">
+        ${marker ? `<div style="position:absolute;right:8px;top:8px;background:${marker.color};color:${marker.textColor || '#fff'};border-radius:999px;padding:3px 8px;font-size:.68rem;font-weight:900">${marker.label}</div>` : ''}
+        <div style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem">
+          ${renderCoverFallbackHtml(g, smMobileEsc)}
+        </div>
+        <div>
+          <div style="font-weight:900;font-size:.98rem;margin-bottom:5px">${smMobileEsc(g.name)}</div>
+          <div style="font-size:.75rem;color:#aaa">${smMobileEsc(TYPE_LABELS[g.type] || g.type || '')} - ${smMobileEsc(g.dur || '?')}min</div>
+        </div>
+      </button>`;
+      const normalOptionsHtml = options.length ? options.map(g => {
+        const selected = selectedGameId === g.id;
+        const marker = selected ? {label: voteMode === 'magnet' ? 'Favorit x3' : 'Favorit', color:'#4ecdc4', textColor:'#061313'} : null;
+        return gameButtonHtml(g, selected, `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, false);
+      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfuegbar.</div>';
+      const banOptionsHtml = options.length ? options.map(g => {
+        const selected = bannedIds.includes(g.id);
+        const marker = selected ? {label:'Bann', color:'#e94560'} : null;
+        return gameButtonHtml(g, selected, `smMobilePickGameBan('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, false);
+      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfuegbar.</div>';
+      const favoriteOptionsHtml = options.length ? options.map(g => {
+        const selected = selectedGameId === g.id;
+        const blocked = bannedIds.includes(g.id);
+        const marker = selected ? {label:'Favorit', color:'#4ecdc4', textColor:'#061313'} : blocked ? {label:'selbst gebannt', color:'#555'} : null;
+        return gameButtonHtml(g, selected, `smMobilePickGameFavorite('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, blocked);
+      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfuegbar.</div>';
+      const confirmLabel = alreadySaved
+        ? 'Auswahl gespeichert'
+        : voteMode === 'ban'
+          ? (!bannedIds.length ? 'Spiel zum Bannen auswaehlen' : !selectedGameId ? 'Favoriten auswaehlen' : ownFavoriteIsBanned ? 'Anderen Favoriten auswaehlen' : 'Bestaetigen')
+          : selectedGameId ? 'Bestaetigen' : 'Ein Spiel auswaehlen';
       c.innerHTML = `
         <div style="background:#1a1a2e;border-radius:16px;padding:14px;margin-bottom:12px;border:2px solid ${alreadySaved?'#4ecdc4':'rgba(255,215,0,.25)'}">
           <div style="font-size:.7rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Spielauswahl</div>
@@ -6307,7 +6344,8 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
           ${magnetLeft > 0 ? `<button onclick="smMobileSetVoteMode('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${voteMode === 'magnet' ? 'vote' : 'magnet'}')" style="border:2px solid ${voteMode==='magnet'?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:${voteMode==='magnet'?'#2d2508':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🧲 Magnet-Joker <span style="color:#aaa;font-weight:700">(${magnetLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">Deine Spielwahl zählt dreifach.</div></button>` : ''}
           ${banLeft > 0 ? `<button onclick="smMobileSetVoteMode('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${voteMode === 'ban' ? 'vote' : 'ban'}')" style="border:2px solid ${voteMode==='ban'?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:${voteMode==='ban'?'#2d2508':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🚫 Bann-Joker <span style="color:#aaa;font-weight:700">(${banLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">${voteMode==='ban' ? `Wähle bis zu ${banLeft} Spiele, die du verbannen möchtest.` : 'Bann-Modus aktivieren.'}</div></button>` : ''}
         </div>` : ''}
-        <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
+        ${voteMode === 'ban' ? `<div style="font-size:.72rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">1. Spiel bannen</div><div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">${banOptionsHtml}</div>` : ''}
+        <div style="display:${voteMode === 'ban' ? 'none' : 'grid'};grid-template-columns:1fr;gap:10px;margin-bottom:14px">
           ${options.length ? options.map(g => {
             const selected = voteMode === 'ban' ? bannedIds.includes(g.id) : selectedGameId === g.id;
             return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`}"
@@ -6322,8 +6360,13 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
             </button>`;
           }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>'}
         </div>
+        ${voteMode === 'ban' ? `
+          <div style="font-size:.72rem;color:#4ecdc4;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">2. Dein Favorit</div>
+          ${ownFavoriteIsBanned ? '<div style="background:#2a1010;border:1px solid #e94560;color:#ffb3bd;border-radius:10px;padding:10px;margin-bottom:10px;font-size:.82rem;font-weight:800">Du kannst nicht fuer ein Spiel stimmen, das du selbst gebannt hast.</div>' : ''}
+          <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">${favoriteOptionsHtml}</div>
+        ` : ''}
         <button id="mobile-game-vote-confirm" onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="width:100%;border:none;border-radius:12px;background:${confirmEnabled?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${confirmEnabled?'':'disabled'}>
-          ${alreadySaved?'✅ Auswahl gespeichert':selectedGameId?'Bestätigen':'Ein Spiel auswählen'}
+          ${confirmLabel}
         </button>
         <div style="font-size:.72rem;color:#777;text-align:center;margin-top:10px">${shownVoteCount} von ${(data.players||[]).length} haben gewählt.</div>`;
       return;
@@ -6523,13 +6566,53 @@ window.smMobilePickGameVote = function smMobilePickGameVote(sessionId, playerNam
   }
 };
 
+window.smMobilePickGameVote = function smMobilePickGameVote(sessionId, playerName, voteId, gameId) {
+  const key = getMobileVoteKey(sessionId, playerName, voteId);
+  const mode = window._mobileGameVoteMode?.[key] || 'vote';
+  if (mode === 'ban') {
+    window.smMobilePickGameBan(sessionId, playerName, voteId, gameId);
+    return;
+  }
+  window.smMobilePickGameFavorite(sessionId, playerName, voteId, gameId);
+};
+
+window.smMobilePickGameBan = function smMobilePickGameBan(sessionId, playerName, voteId, gameId) {
+  if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
+  if (!window._mobileGameVotes) window._mobileGameVotes = {};
+  const key = getMobileVoteKey(sessionId, playerName, voteId);
+  const bans = window._mobileGameVoteBans[key] || (window._mobileGameVoteBans[key] = []);
+  const idx = bans.indexOf(gameId);
+  if (idx >= 0) bans.splice(idx, 1);
+  else {
+    const limit = window._mobileGameVoteBanLimit?.[key] || 1;
+    if (bans.length >= limit) return;
+    bans.push(gameId);
+  }
+  if (bans.includes(window._mobileGameVotes[key])) {
+    showToast('Du kannst nicht fuer ein Spiel stimmen, das du selbst gebannt hast.');
+  }
+  renderMobilePlayerView(sessionId, playerName);
+};
+
+window.smMobilePickGameFavorite = function smMobilePickGameFavorite(sessionId, playerName, voteId, gameId) {
+  if (!window._mobileGameVotes) window._mobileGameVotes = {};
+  if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
+  const key = getMobileVoteKey(sessionId, playerName, voteId);
+  const bans = window._mobileGameVoteBans[key] || [];
+  if ((window._mobileGameVoteMode?.[key] || 'vote') === 'ban' && bans.includes(gameId)) {
+    showToast('Du kannst nicht fuer ein Spiel stimmen, das du selbst gebannt hast.');
+    return;
+  }
+  window._mobileGameVotes[key] = gameId;
+  renderMobilePlayerView(sessionId, playerName);
+};
+
 window.smMobileSetVoteMode = function smMobileSetVoteMode(sessionId, playerName, voteId, mode) {
   if (!window._mobileGameVoteMode) window._mobileGameVoteMode = {};
   const key = getMobileVoteKey(sessionId, playerName, voteId);
   window._mobileGameVoteMode[key] = mode || 'vote';
   if (mode === 'ban') {
     if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
-    window._mobileGameVotes[key] = '';
   } else {
     if (window._mobileGameVoteBans) window._mobileGameVoteBans[key] = [];
   }
@@ -6544,7 +6627,11 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
   const modeJoker = window._mobileGameVoteMode?.[key] === 'magnet' ? 'magnet' : window._mobileGameVoteMode?.[key] === 'ban' ? 'ban' : null;
   const bannedGameIds = modeJoker === 'ban' ? [...(window._mobileGameVoteBans?.[key] || [])] : [];
   if (modeJoker === 'ban' && !bannedGameIds.length) return;
-  if (modeJoker !== 'ban' && !gameId) return;
+  if (!gameId) return;
+  if (modeJoker === 'ban' && bannedGameIds.includes(gameId)) {
+    showToast('Du kannst nicht fuer ein Spiel stimmen, das du selbst gebannt hast.');
+    return;
+  }
   console.log('[gameVote send]', voteRoundId, playerKey, gameId);
   if (!window._mobileGameVoteSubmitted) window._mobileGameVoteSubmitted = {};
   if (window._mobileGameVoteSubmitted[key]) return;
@@ -6562,7 +6649,7 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
     if (!data || data.phase !== 'gameVote' || currentRoundId !== voteRoundId) throw new Error('Abstimmung ist nicht mehr aktiv.');
     const optionIds = new Set((data.currentVoteOptions || []).map(g => g.id));
     const valid = modeJoker === 'ban'
-      ? bannedGameIds.length > 0 && bannedGameIds.every(id => optionIds.has(id))
+      ? optionIds.has(gameId) && bannedGameIds.length > 0 && bannedGameIds.every(id => optionIds.has(id)) && !bannedGameIds.includes(gameId)
       : optionIds.has(gameId);
     if (!valid) throw new Error('Ungültige Spielauswahl.');
     return firebase.database().ref(`sessions/${sessionId}/guestActions`).push({
@@ -6571,7 +6658,7 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
       playerKey,
       voteId,
       voteRoundId,
-      gameId: modeJoker === 'ban' ? null : gameId,
+      gameId,
       modeJoker,
       bannedGameIds,
       ts:Date.now()
@@ -6982,7 +7069,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     records.forEach(r => {
       const player = findPlayerByVoteName(r.playerKey || r.playerName);
       const color = getPlayerColorHex(player?.color);
-      if (r.modeJoker === 'ban') {
+      if (false && r.modeJoker === 'ban') {
         r.bannedGameIds.forEach((gameId, i) => {
           const game = options.find(g => g.id === gameId);
           if (!game) return;
@@ -7001,14 +7088,16 @@ document.addEventListener('sm-mobile-local-refresh', e => {
       }
       const game = options.find(g => g.id === r.gameId);
       if (!game) return;
+      const matchingBans = (bansByGame[game.id] || []).filter(b => b.playerKey !== r.playerKey);
       const base = {
         voteKey: r.playerKey,
         playerName: r.playerName,
         color,
         game,
         gameId: game.id,
-        disabled: !!bansByGame[game.id],
-        bannedBy: (bansByGame[game.id] || []).map(b => b.playerName).join(', '),
+        disabled: matchingBans.length > 0,
+        jokerBadge: matchingBans.length ? 'Bann-Joker' : '',
+        bannedBy: matchingBans.map(b => b.playerName).join(', '),
       };
       entries.push(base);
       if (r.modeJoker === 'magnet') {
@@ -7048,7 +7137,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     }).join('');
     const voteCards = entries.map(({game:g, playerName, color, voteKey, disabled, jokerBadge, bannedBy}, i) => `
       <div id="mk-vote-card-${i}" class="mk-vote-card ${disabled?'dimmed':''}" data-disabled="${disabled?'1':'0'}" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color};box-shadow:0 0 0 3px ${color}55;${disabled?'filter:grayscale(1);opacity:.42':''}">
-        ${jokerBadge ? `<div class="mk-vote-count" style="font-size:.66rem">${esc(jokerBadge)}</div>` : ''}
+        ${disabled ? `<div class="mk-vote-count" style="font-size:.66rem">&#128683; Bann-Joker</div>` : (jokerBadge ? `<div class="mk-vote-count" style="font-size:.66rem">${esc(jokerBadge)}</div>` : '')}
         ${disabled && bannedBy ? `<div class="mk-vote-count" style="font-size:.62rem;right:8px;top:38px;background:#e94560">🚫 ${esc(bannedBy)}</div>` : ''}
         <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
         <div>
