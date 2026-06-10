@@ -1171,6 +1171,7 @@ let state = {
   currentVoteOptions:[],
   currentGameVotes:{},
   currentVoteId:null,
+  currentVoteRoundId:null,
   currentVoteWinner:null,
   currentVoteDisplayOrder:[],
   timeLimit:120,
@@ -1212,6 +1213,7 @@ function resetMarathonRuntime(options = {}) {
   state.currentVoteOptions = [];
   state.currentGameVotes = {};
   state.currentVoteId = null;
+  state.currentVoteRoundId = null;
   state.currentVoteWinner = null;
   state.currentVoteDisplayOrder = [];
   state.marathonMode = getSelectedMarathonMode();
@@ -1319,6 +1321,7 @@ function buildSessionSnapshot(name, finalize=false) {
     currentVoteOptions: state.currentVoteOptions || [],
     currentGameVotes: state.currentGameVotes || {},
     currentVoteId: state.currentVoteId || null,
+    currentVoteRoundId: state.currentVoteRoundId || state.currentVoteId || null,
     currentVoteWinner: state.currentVoteWinner || null,
     currentVoteDisplayOrder: state.currentVoteDisplayOrder || [],
     timeLimit: state.timeLimit,
@@ -2113,6 +2116,7 @@ function startMarathon() {
   state.currentVoteOptions = [];
   state.currentGameVotes = {};
   state.currentVoteId = null;
+  state.currentVoteRoundId = null;
   state.currentVoteWinner = null;
   state.currentVoteDisplayOrder = [];
   state.secretGoals = {};
@@ -2395,6 +2399,7 @@ function startGameVoteRound() {
   state.currentGameVotes = {};
   state.currentVoteWinner = null;
   state.currentVoteId = uid();
+  state.currentVoteRoundId = state.currentVoteId;
   state.currentVoteDisplayOrder = [];
   state._gameVoteAnimating = false;
   state._setupPhase = 'gameVote';
@@ -2419,7 +2424,7 @@ function allGameVotesIn() {
   const requiredPlayers = (state.players || []).map(p => getGameVotePlayerKey(p));
   const votes = state.currentGameVotes || {};
   const allVoted = requiredPlayers.length > 0 && requiredPlayers.every(key => !!votes[key]);
-  console.log('[gameVote allVoted?]', requiredPlayers, votes, allVoted);
+  console.log('[all voted check]', requiredPlayers, votes, allVoted);
   return allVoted;
 }
 
@@ -2597,6 +2602,7 @@ function finishMarioKartSelection(gameId) {
   state.currentVoteOptions = [];
   state.currentGameVotes = {};
   state.currentVoteId = null;
+  state.currentVoteRoundId = null;
   state.currentVoteDisplayOrder = [];
   state._setupPhase = 'marathon';
   state._gameVoteAnimating = false;
@@ -3440,6 +3446,7 @@ function loadSession(id) {
   state.currentVoteOptions = Array.isArray(s.currentVoteOptions) ? s.currentVoteOptions : [];
   state.currentGameVotes = s.currentGameVotes || {};
   state.currentVoteId = s.currentVoteId || null;
+  state.currentVoteRoundId = s.currentVoteRoundId || s.currentVoteId || null;
   state.currentVoteWinner = s.currentVoteWinner || null;
   state.currentVoteDisplayOrder = Array.isArray(s.currentVoteDisplayOrder) ? s.currentVoteDisplayOrder : [];
   state.secretGoals  = s.secretGoals  || {};
@@ -3852,7 +3859,7 @@ function saveCurrentToLS() {
     jokers:state.jokers, timeLimit:state.timeLimit, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
     games:state.games, jokerPicks:state.jokerPicks, skipped:state.skipped,
     gameCategories:state.gameCategories || [],
-    currentVoteOptions:state.currentVoteOptions || [], currentGameVotes:state.currentGameVotes || {}, currentVoteId:state.currentVoteId || null, currentVoteWinner:state.currentVoteWinner || null,
+    currentVoteOptions:state.currentVoteOptions || [], currentGameVotes:state.currentGameVotes || {}, currentVoteId:state.currentVoteId || null, currentVoteRoundId:state.currentVoteRoundId || state.currentVoteId || null, currentVoteWinner:state.currentVoteWinner || null,
     currentVoteDisplayOrder:state.currentVoteDisplayOrder || [],
     secretGoals:state.secretGoals, secretGoalExtras:state.secretGoalExtras, comebackGiven:state.comebackGiven, goalAchieved:state.goalAchieved, giftedJokers:state.giftedJokers,
     setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
@@ -5469,12 +5476,13 @@ function fbPushState() {
     marathonMode:   normalizeMarathonMode(state.marathonMode),
     currentVoteOptions: state.currentVoteOptions || [],
     currentVoteId: state.currentVoteId || null,
+    currentVoteRoundId: state.currentVoteRoundId || state.currentVoteId || null,
     gameVoteVotedPlayers: Object.keys(state.currentGameVotes || {}),
     marathonStarted: state.plan && state.plan.length > 0,
     ts:             Date.now(),
     hostAlive:      true,
   };
-  fbSessionRef.set(data).catch(e=>console.error('FB push error:',e));
+  fbSessionRef.update(data).catch(e=>console.error('FB push error:',e));
 }
 
 function fbJoinSession(sessionId) {
@@ -5856,6 +5864,7 @@ window.startMarathon = function startMarathon() {
   state.currentVoteOptions = [];
   state.currentGameVotes = {};
   state.currentVoteId = null;
+  state.currentVoteRoundId = null;
   state.currentVoteWinner = null;
   state.secretGoals = {};
   state.secretGoalExtras = {};
@@ -5968,6 +5977,7 @@ window.fbPushState = function fbPushState() {
     marathonMode: normalizeMarathonMode(state.marathonMode),
     currentVoteOptions: state.currentVoteOptions || [],
     currentVoteId: state.currentVoteId || null,
+    currentVoteRoundId: state.currentVoteRoundId || state.currentVoteId || null,
     gameVoteVotedPlayers: Object.keys(state.currentGameVotes || {}),
     phase,
     marathonStarted: !!state._marathonStarted,
@@ -5975,16 +5985,24 @@ window.fbPushState = function fbPushState() {
     ts: Date.now(),
     hostAlive: true,
   };
-  fbSessionRef.set(data).catch(e=>console.error('FB push error:',e));
+  fbSessionRef.update(data).catch(e=>console.error('FB push error:',e));
 };
 
 window.fbListenGuestActions = function fbListenGuestActions() {
   if (!fbSyncEnabled || !fbSessionRef || !fbIsHost) return;
   fbSessionRef.child('guestActions').off();
   fbSessionRef.child('guestActions').on('child_added', snap => {
+    const actionKey = snap.key;
     const action = snap.val();
-    if (!action || Date.now() - action.ts > 120000) { snap.ref.remove(); return; }
-    snap.ref.remove();
+    console.log('[action received]', actionKey, action);
+    const markProcessed = () => snap.ref.remove().then(() => {
+      console.log('[action processed]', actionKey);
+    }).catch(e => console.warn('[action process cleanup failed]', actionKey, e));
+    if (!action || action.processed || Date.now() - action.ts > 120000) {
+      console.warn('[vote ignored]', !action ? 'empty action' : action.processed ? 'already processed' : 'stale action', action);
+      markProcessed();
+      return;
+    }
     if (action.type === 'jokerPick') {
       const p = findPlayerByVoteName(action.playerName);
       const validIds = new Set(JOKER_DEFS.map(j=>j.id));
@@ -5997,60 +6015,61 @@ window.fbListenGuestActions = function fbListenGuestActions() {
         fbPushState();
         showToast(`📱 ${p.name} hat Joker gewählt ✓`);
       }
+      markProcessed();
+      return;
     }
     if (action.type === 'gameVote') {
-      console.log('[gameVote received]', action);
-      const p2 = findPlayerByVoteName(action.playerKey || action.playerName);
-      const playerKey2 = p2 ? getGameVotePlayerKey(p2) : '';
-      const optionIds2 = new Set((state.currentVoteOptions || []).map(g => g.id));
-      let rejected2 = '';
-      if (!p2) rejected2 = 'unknown player';
-      else if (state._setupPhase !== 'gameVote') rejected2 = 'not in gameVote phase';
-      else if (action.voteId !== state.currentVoteId) rejected2 = 'stale voteId';
-      else if (!optionIds2.has(action.gameId)) rejected2 = 'invalid gameId';
-      if (rejected2) {
-        console.warn('[gameVote rejected]', rejected2, action);
+      const p = findPlayerByVoteName(action.playerKey || action.playerName);
+      const playerKey = p ? getGameVotePlayerKey(p) : '';
+      const optionIds = new Set((state.currentVoteOptions || []).map(g => g.id));
+      const actionRoundId = action.voteRoundId || action.voteId || null;
+      const currentRoundId = state.currentVoteRoundId || state.currentVoteId || null;
+      let ignored = '';
+      if (!p) ignored = 'unknown player';
+      else if (state._setupPhase !== 'gameVote') ignored = 'not in gameVote phase';
+      else if (!actionRoundId || actionRoundId !== currentRoundId) ignored = 'stale voteRoundId';
+      else if (!optionIds.has(action.gameId)) ignored = 'invalid gameId';
+      if (ignored) {
+        console.warn('[vote ignored]', ignored, action);
         window.renderGameVoteHost();
         fbPushState();
+        markProcessed();
         return;
       }
       if (!state.currentGameVotes) state.currentGameVotes = {};
-      if (state.currentGameVotes[playerKey2] && state.currentGameVotes[playerKey2] !== action.gameId) {
-        console.warn('[gameVote rejected]', 'duplicate vote', action);
+      const existingVote = state.currentGameVotes[playerKey];
+      if (existingVote) {
+        console.warn('[vote ignored]', existingVote === action.gameId ? 'duplicate vote' : 'conflicting duplicate vote', action);
         window.renderGameVoteHost();
         fbPushState();
+        markProcessed();
         return;
       }
-      state.currentGameVotes[playerKey2] = action.gameId;
-      console.log('[gameVote accepted]', playerKey2, action.gameId, state.currentGameVotes);
+      state.currentGameVotes = { ...state.currentGameVotes, [playerKey]: action.gameId };
+      console.log('[vote accepted]', playerKey, action.gameId, state.currentGameVotes);
       window.renderGameVoteHost();
       fbPushState();
       saveCurrentToLS();
-      const allVoted2 = allGameVotesIn();
-      showToast(allVoted2 ? '🏁 Alle Spielwahlen sind da!' : `📱 ${p2.name} hat gewählt ✓`);
-      if (allVoted2) setTimeout(() => window.runMarioKartSelectionAnimation(), 900);
+      const allVoted = allGameVotesIn();
+      showToast(allVoted ? '🏁 Alle Spielwahlen sind da!' : `📱 ${p.name} hat gewählt ✓`);
+      markProcessed();
+      if (allVoted) setTimeout(() => window.runMarioKartSelectionAnimation(), 900);
       return;
-      const p = findPlayerByVoteName(action.playerName);
-      const optionIds = new Set((state.currentVoteOptions || []).map(g => g.id));
-      if (p && state._setupPhase === 'gameVote' && action.voteId === state.currentVoteId && optionIds.has(action.gameId)) {
-        if (state.currentGameVotes?.[getGameVotePlayerKey(p)]) return;
-        state.currentGameVotes[getGameVotePlayerKey(p)] = action.gameId;
-        window.renderGameVoteHost();
-        fbPushState();
-        saveCurrentToLS();
-        showToast(allGameVotesIn() ? '🏁 Alle Spielwahlen sind da!' : `📱 ${p.name} hat gewählt ✓`);
-        if (allGameVotesIn()) setTimeout(() => window.runMarioKartSelectionAnimation(), 900);
-      }
     }
     if (action.type === 'useJoker') {
       if (action.jokerId === 'revenge' && !canUseRevengeJoker()) {
         console.warn('[joker rejected]', 'revenge before first completed game', action);
         showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
+        markProcessed();
         return;
       }
       openJokerModal(action.playerName, action.jokerId);
       showToast(`📱 ${action.playerName} möchte Joker einsetzen!`);
+      markProcessed();
+      return;
     }
+    console.warn('[vote ignored]', 'unknown action type', action);
+    markProcessed();
   });
 };
 
@@ -6124,9 +6143,10 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     if (data.phase === 'gameVote') {
       const options = data.currentVoteOptions || [];
       const votedPlayers = data.gameVoteVotedPlayers || [];
+      const currentVoteRoundId = data.currentVoteRoundId || data.currentVoteId || '';
       if (!window._mobileGameVotes) window._mobileGameVotes = {};
       if (!window._mobileGameVoteSubmitted) window._mobileGameVoteSubmitted = {};
-      const voteKey = getMobileVoteKey(sessionId, playerName, data.currentVoteId || '');
+      const voteKey = getMobileVoteKey(sessionId, playerName, currentVoteRoundId);
       const alreadySaved = votedPlayers.some(n => normalizeVotePlayerName(n) === normalizeVotePlayerName(playerName)) || !!window._mobileGameVoteSubmitted[voteKey];
       const selectedGameId = window._mobileGameVotes[voteKey] || '';
       const shownVoteCount = Math.max(votedPlayers.length, alreadySaved ? 1 : 0);
@@ -6139,7 +6159,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
           ${options.length ? options.map(g => {
             const selected = selectedGameId === g.id;
-            return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(data.currentVoteId || '')}','${smMobileEsc(g.id)}')`}"
+            return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`}"
               style="display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${alreadySaved && !selected ? .7 : 1}">
               <div style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem">
                 ${renderCoverFallbackHtml(g, smMobileEsc)}
@@ -6151,7 +6171,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
             </button>`;
           }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>'}
         </div>
-        <button id="mobile-game-vote-confirm" onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(data.currentVoteId || '')}')" style="width:100%;border:none;border-radius:12px;background:${selectedGameId&&!alreadySaved?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${selectedGameId&&!alreadySaved?'':'disabled'}>
+        <button id="mobile-game-vote-confirm" onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="width:100%;border:none;border-radius:12px;background:${selectedGameId&&!alreadySaved?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${selectedGameId&&!alreadySaved?'':'disabled'}>
           ${alreadySaved?'✅ Auswahl gespeichert':selectedGameId?'Bestätigen':'Ein Spiel auswählen'}
         </button>
         <div style="font-size:.72rem;color:#777;text-align:center;margin-top:10px">${shownVoteCount} von ${(data.players||[]).length} haben gewählt.</div>`;
@@ -6322,7 +6342,61 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
   const key = getMobileVoteKey(sessionId, playerName, voteId);
   const gameId = window._mobileGameVotes?.[key];
   if (!gameId) return;
-  console.log('[gameVote send]', playerName, getGameVotePlayerKey(playerName), gameId);
+  const playerKey = getGameVotePlayerKey(playerName);
+  const voteRoundId = voteId;
+  console.log('[gameVote send]', voteRoundId, playerKey, gameId);
+  if (!window._mobileGameVoteSubmitted) window._mobileGameVoteSubmitted = {};
+  if (window._mobileGameVoteSubmitted[key]) return;
+  window._mobileGameVoteSubmitted[key] = true;
+  const c = document.getElementById('mobile-content');
+  const confirm = document.getElementById('mobile-game-vote-confirm');
+  if (confirm) {
+    confirm.disabled = true;
+    confirm.style.background = '#555';
+    confirm.textContent = 'Sende...';
+  }
+  firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
+    const data = snap.val();
+    const currentRoundId = data?.currentVoteRoundId || data?.currentVoteId || null;
+    if (!data || data.phase !== 'gameVote' || currentRoundId !== voteRoundId) throw new Error('Abstimmung ist nicht mehr aktiv.');
+    const valid = (data.currentVoteOptions || []).some(g => g.id === gameId);
+    if (!valid) throw new Error('Ungültige Spielauswahl.');
+    return firebase.database().ref(`sessions/${sessionId}/guestActions`).push({
+      type:'gameVote',
+      playerName,
+      playerKey,
+      voteId,
+      voteRoundId,
+      gameId,
+      ts:Date.now()
+    });
+  }).then(actionRef => {
+    if (actionRef?.key) console.log('[gameVote pushed]', actionRef.key);
+    if (c) {
+      c.querySelectorAll('[data-mobile-vote-option]').forEach(btn => {
+        btn.disabled = true;
+        if (btn.getAttribute('data-mobile-vote-option') !== gameId) btn.style.opacity = '.7';
+      });
+      if (confirm) {
+        confirm.disabled = true;
+        confirm.style.background = '#555';
+        confirm.textContent = '✅ Auswahl gespeichert';
+      }
+      c.insertAdjacentHTML('afterbegin', `<div style="background:#0d2a1a;border:1px solid #4ecdc4;color:#4ecdc4;border-radius:10px;padding:10px;margin-bottom:10px;text-align:center;font-weight:800">✅ Auswahl gespeichert<br><span style="font-size:.78rem;color:#9ee7dc">Warte auf die anderen Spieler</span></div>`);
+    }
+  }).catch(err => {
+    console.warn('[gameVote send failed]', err);
+    window._mobileGameVoteSubmitted[key] = false;
+    if (confirm) {
+      confirm.disabled = false;
+      confirm.style.background = '#e94560';
+      confirm.textContent = 'Erneut senden';
+    }
+    if (c) {
+      c.insertAdjacentHTML('afterbegin', `<div style="background:#2a1010;border:1px solid #e94560;color:#ffb3bd;border-radius:10px;padding:10px;margin-bottom:10px;text-align:center;font-weight:800">Senden fehlgeschlagen. Bitte erneut versuchen.</div>`);
+    }
+  });
+  return;
   firebase.database().ref(`sessions/${sessionId}`).once('value').then(snap => {
     const data = snap.val();
     if (!data || data.phase !== 'gameVote' || data.currentVoteId !== voteId) return;
@@ -6852,6 +6926,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     state.currentVoteOptions = [];
     state.currentGameVotes = {};
     state.currentVoteId = null;
+    state.currentVoteRoundId = null;
     state.currentVoteDisplayOrder = [];
     state._setupPhase = 'marathon';
     state._gameVoteAnimating = false;
