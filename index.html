@@ -107,9 +107,9 @@ header::before{content:'';position:absolute;inset:0;background:radial-gradient(e
 .library-tab.active{background:var(--card);border-color:rgba(233,69,96,.45);color:var(--text);box-shadow:0 3px 12px rgba(0,0,0,.18)}
 .library-tab:hover:not(.active){background:rgba(255,255,255,.08);color:var(--text)}
 .game-library-searchbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:end;margin-bottom:12px}
-.game-library-search-input{position:relative}
-.game-library-search-input span{position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);z-index:1;line-height:1}
-.game-library-search-input input{padding-left:40px}
+.game-search-wrap{position:relative}
+.game-search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);z-index:2;line-height:1}
+.game-search-wrap #game-library-search{padding-left:46px !important}
 .game-library-count{font-size:.76rem;color:var(--muted);padding:0 2px 10px;white-space:nowrap}
 .game-library-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:14px;background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:10px}
 .game-library-toolbar .bulk-activate{margin-left:auto}
@@ -4299,21 +4299,20 @@ function clearGameLibrarySelection() {
   openGameLibraryModal('games');
 }
 
-function activateSelectedLibraryGames() {
+function toggleSelectedGamesActive() {
   const existingIds = new Set(state.games.map(g => g.id));
-  const idsToActivate = [...selectedGameLibraryIds].filter(id => existingIds.has(id));
-  if (!idsToActivate.length) {
+  const selectedGames = state.games.filter(g => selectedGameLibraryIds.has(g.id) && existingIds.has(g.id));
+  if (!selectedGames.length) {
     selectedGameLibraryIds.clear();
     openGameLibraryModal('games');
     return;
   }
-  const selectedIds = new Set(idsToActivate);
-  state.games.forEach(g => {
-    if (selectedIds.has(g.id)) g.enabled = true;
-  });
+  const allActive = selectedGames.every(g => g.enabled !== false);
+  const newActiveState = !allActive;
+  selectedGames.forEach(g => { g.enabled = newActiveState; });
   saveLS();
   openGameLibraryModal('games');
-  showToast(idsToActivate.length + ' Spiel' + (idsToActivate.length === 1 ? '' : 'e') + ' aktiviert');
+  showToast(selectedGames.length + ' Spiel' + (selectedGames.length === 1 ? '' : 'e') + (newActiveState ? ' aktiviert' : ' deaktiviert'));
 }
 
 function deleteSelectedLibraryGames() {
@@ -4410,12 +4409,12 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games', focusSearch
   const selectedCount = selectedGameLibraryIds.size;
   const searchBar = '<div class="game-library-searchbar">'
     + '<div class="game-library-search"><label for="game-library-search" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Spiele suchen</label>'
-    + '<div class="game-library-search-input"><span aria-hidden="true">🔎</span><input type="text" id="game-library-search" placeholder="Name, Verlag, Kategorie oder Typ" value="' + esc(gameLibrarySearchQuery) + '" oninput="onGameLibrarySearch(this.value)"/></div></div>'
+    + '<div class="game-search-wrap"><span class="game-search-icon" aria-hidden="true">🔎</span><input type="text" id="game-library-search" placeholder="Name, Verlag, Kategorie oder Typ" value="' + esc(gameLibrarySearchQuery) + '" oninput="onGameLibrarySearch(this.value)"/></div></div>'
     + '<div class="game-library-count"><strong style="color:var(--text)">' + filteredGames.length + '</strong> von ' + state.games.length + ' Spielen sichtbar</div></div>';
   const toolbar = '<div class="game-library-toolbar">'
     + '<button class="btn btn-secondary btn-sm" onclick="selectAllVisibleLibraryGames()" ' + (filteredGames.length?'':'disabled') + '>Alle auswählen</button>'
     + '<button class="btn btn-ghost btn-sm" onclick="clearGameLibrarySelection()" ' + (selectedCount?'':'disabled') + '>Auswahl aufheben</button>'
-    + '<button class="btn btn-green btn-sm bulk-activate" onclick="activateSelectedLibraryGames()" ' + (selectedCount?'':'disabled') + '>Ausgewählte Spiele aktivieren</button>'
+    + '<button class="btn btn-green btn-sm bulk-activate" onclick="toggleSelectedGamesActive()" ' + (selectedCount?'':'disabled') + '>Ausgewählte aktivieren/deaktivieren</button>'
     + '<button class="btn btn-danger btn-sm bulk-delete" onclick="deleteSelectedLibraryGames()" ' + (selectedCount?'':'disabled') + '>Alle ausgewählten Spiele löschen 🗑' + (selectedCount ? ' (' + selectedCount + ')' : '') + '</button></div>';
   if (!state.games.length) {
     c.innerHTML = tabs + '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
