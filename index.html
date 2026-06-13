@@ -102,10 +102,37 @@ header::before{content:'';position:absolute;inset:0;background:radial-gradient(e
 .tab:hover:not(.active){background:rgba(255,255,255,.08);color:var(--text)}
 .tab-content{display:none;padding-top:20px}
 .tab-content.active{display:block}
-.library-tabs{display:flex;gap:4px;background:var(--surface);border-radius:10px;padding:4px;margin-bottom:14px;flex-wrap:wrap}
-.library-tab{flex:1;min-width:120px;padding:8px 10px;border:none;background:transparent;color:var(--muted);font-size:.82rem;font-weight:700;border-radius:7px;cursor:pointer;transition:var(--transition);text-align:center}
-.library-tab.active{background:var(--accent);color:#fff}
+.library-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface);border-radius:12px;padding:5px;margin-bottom:16px}
+.library-tab{width:100%;padding:10px 12px;border:1px solid transparent;background:transparent;color:var(--muted);font-size:.84rem;font-weight:800;border-radius:8px;cursor:pointer;transition:var(--transition);text-align:center}
+.library-tab.active{background:var(--card);border-color:rgba(233,69,96,.45);color:var(--text);box-shadow:0 3px 12px rgba(0,0,0,.18)}
 .library-tab:hover:not(.active){background:rgba(255,255,255,.08);color:var(--text)}
+.game-library-searchbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:end;margin-bottom:12px}
+.game-library-search{position:relative}
+.game-library-search span{position:absolute;left:12px;bottom:10px;pointer-events:none;color:var(--muted)}
+.game-library-search input{padding-left:36px}
+.game-library-count{font-size:.76rem;color:var(--muted);padding:0 2px 10px;white-space:nowrap}
+.game-library-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:14px;background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:10px}
+.game-library-toolbar .bulk-delete{margin-left:auto}
+.game-library-toolbar .bulk-delete:disabled{opacity:.28}
+.game-library-grid{display:flex;flex-direction:column;gap:7px}
+.game-library-head,.game-library-row{display:grid;grid-template-columns:minmax(220px,2fr) 78px 120px 84px 78px 82px 88px;gap:10px;align-items:center}
+.game-library-head{padding:0 14px 6px;color:var(--muted);font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.game-library-row{position:relative;padding:11px 14px;background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:11px;cursor:pointer;transition:background .16s,border-color .16s,box-shadow .16s,transform .16s}
+.game-library-row:hover{background:rgba(255,255,255,.075);border-color:rgba(255,255,255,.14);transform:translateY(-1px)}
+.game-library-row.selected{background:rgba(233,69,96,.11);border-color:var(--accent);box-shadow:0 0 0 1px rgba(233,69,96,.22)}
+.game-library-row.disabled{opacity:.55}
+.game-library-row.disabled.selected{opacity:.78}
+.game-library-game{display:grid;grid-template-columns:48px minmax(0,1fr);gap:11px;align-items:center;min-width:0}
+.game-library-cover{width:48px;height:48px;border-radius:9px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.35rem;flex-shrink:0}
+.game-library-cover img{width:100%;height:100%;object-fit:cover}
+.game-library-name{font-size:.92rem;font-weight:850;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.game-library-dev{font-size:.72rem;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.game-library-cell{font-size:.78rem;color:var(--muted);min-width:0}
+.game-library-select-mark{position:absolute;left:5px;top:5px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-size:.72rem;font-weight:900;box-shadow:0 2px 8px rgba(0,0,0,.4);opacity:0;transform:scale(.7);transition:.15s}
+.game-library-row.selected .game-library-select-mark{opacity:1;transform:scale(1)}
+.game-library-active{display:flex;align-items:center;justify-content:center;gap:6px;font-size:.72rem;color:var(--muted);cursor:pointer;margin:0}
+.game-library-active input{width:17px;height:17px;accent-color:var(--green)}
+.game-library-edit{justify-self:end}
 
 /* INPUTS */
 label{font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px}
@@ -381,6 +408,26 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   .game-item .badge,.game-item .btn-sm:last-child{display:none}
   header{padding:12px 16px}
   .card{padding:16px}
+}
+@media(max-width:900px){
+  #modal-game-library .modal{padding:16px}
+  .game-library-searchbar{grid-template-columns:1fr}
+  .game-library-count{padding:0 2px}
+  .game-library-toolbar{align-items:stretch}
+  .game-library-toolbar .btn{flex:1;justify-content:center}
+  .game-library-toolbar .bulk-delete{flex-basis:100%;margin-left:0;order:3}
+  .game-library-head{display:none}
+  .game-library-grid{gap:10px}
+  .game-library-row{display:grid;grid-template-columns:1fr auto;gap:11px 10px;padding:13px}
+  .game-library-game{grid-column:1/-1}
+  .game-library-cover{width:58px;height:58px}
+  .game-library-name{font-size:1rem}
+  .game-library-cell{display:flex;align-items:center;gap:5px;font-size:.76rem}
+  .game-library-cell.type,.game-library-cell.duration{display:none}
+  .game-library-cell.category{grid-column:1/2}
+  .game-library-cell.players{grid-column:1/2}
+  .game-library-active{grid-column:2/3;grid-row:2/3;justify-self:end}
+  .game-library-edit{grid-column:2/3;grid-row:3/4;align-self:end}
 }
 </style>
 </head>
@@ -684,7 +731,10 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
       <img class="img-preview" id="mg-cover-preview"/>
     </div>
     <input type="url" id="mg-cover-url" placeholder="https://… (alternativ URL)" style="margin-top:6px" onchange="handleCoverUrl(this.value)"/>
-    <button class="btn btn-ghost btn-sm" onclick="clearCover()" style="margin-top:4px">✕ Bild entfernen</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+      <button class="btn btn-secondary btn-sm" id="mg-cover-recrop" onclick="recropCurrentCover()" style="display:none">✂️ Cover neu zuschneiden</button>
+      <button class="btn btn-ghost btn-sm" id="mg-cover-clear" onclick="clearCover()">✕ Bild entfernen</button>
+    </div>
   </div>
   <div class="form-group" id="mg-coop-bonus-wrap" style="display:none">
     <label>Anzahl Sonderregel-Slots (Koop) <span style="color:var(--gold)">— jede erfüllte Regel = +1 Punkt</span></label>
@@ -785,10 +835,10 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 
 <!-- Game Library Overview Modal -->
 <div class="modal-overlay" id="modal-game-library">
-<div class="modal" style="max-width:680px">
+<div class="modal" style="max-width:1080px">
   <h3>📚 Spielesammlung</h3>
   <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Alle gespeicherten Spiele auf einen Blick.</p>
-  <div style="max-height:55vh;overflow-y:auto" id="game-library-list"></div>
+  <div style="max-height:68vh;overflow-y:auto;padding:1px" id="game-library-list"></div>
   <div class="modal-actions">
     <button class="btn btn-ghost" onclick="closeModal('modal-game-library')">Schließen</button>
   </div>
@@ -1212,6 +1262,7 @@ let modalRules = [];
 let pendingJokerPlayer = null;
 let pendingJokerId = null;
 let coverDataUrl = '';
+let coverOriginalDataUrl = '';
 let resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
 
 // ═══════════════════════════════════════════════════════════
@@ -1519,6 +1570,7 @@ function normalizeGameCategories() {
   state.games.forEach(g => {
     const cid = g.categoryId || g.seriesId || '';
     g.categoryId = validIds.has(cid) ? cid : '';
+    g.coverImg = g.coverCropped || g.coverImg || '';
   });
 }
 
@@ -1596,6 +1648,7 @@ function createCategoryFromGameModal() {
 function openAddGameModal(editId = null) {
   state.editGameId = editId;
   coverDataUrl = '';
+  coverOriginalDataUrl = '';
   normalizeGameCategories();
   document.getElementById('modal-game-title').textContent = editId ? '✏️ Spiel bearbeiten' : '➕ Spiel hinzufügen';
   document.getElementById('mg-cover-url').value = '';
@@ -1617,10 +1670,12 @@ function openAddGameModal(editId = null) {
     document.getElementById('mg-win-condition').value = g.winCondition || 'all';
     document.getElementById('mg-ties-allowed').checked = !!g.tiesAllowed;
     renderGameCategorySelect(getGameCategoryId(g));
-    if (g.coverImg) {
-      coverDataUrl = g.coverImg;
+    const savedCover = g.coverCropped || g.coverImg || '';
+    if (savedCover) {
+      coverDataUrl = savedCover;
+      coverOriginalDataUrl = g.coverOriginal || savedCover;
       const prev = document.getElementById('mg-cover-preview');
-      prev.src = g.coverImg; prev.style.display = 'block';
+      prev.src = savedCover; prev.style.display = 'block';
       document.getElementById('cover-upload-area').classList.add('has-img');
     }
     renderModalRules(g.rules || []);
@@ -1638,6 +1693,7 @@ function openAddGameModal(editId = null) {
     renderGameCategorySelect('');
     renderModalRules([]);
   }
+  updateCoverEditorActions();
   onGameTypeChange();
   openModal('modal-add-game');
 }
@@ -1647,7 +1703,7 @@ function handleCoverFile(e) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
-    openCropModal(ev.target.result, {targetType:'cover'});
+    openCropModal(ev.target.result, {targetType:'cover', originalSource:ev.target.result});
   };
   reader.readAsDataURL(file);
   e.target.value = '';
@@ -1655,19 +1711,40 @@ function handleCoverFile(e) {
 
 function handleCoverUrl(url) {
   if (!url) return;
+  coverOriginalDataUrl = url;
   coverDataUrl = url;
   const prev = document.getElementById('mg-cover-preview');
   prev.src = url; prev.style.display = 'block';
   document.getElementById('cover-upload-area').classList.add('has-img');
+  updateCoverEditorActions();
   openCropModal(url, {targetType:'cover', sourceType:'url'});
 }
 
 function clearCover() {
   coverDataUrl = '';
+  coverOriginalDataUrl = '';
   document.getElementById('mg-cover-preview').style.display = 'none';
   document.getElementById('mg-cover-preview').src = '';
   document.getElementById('mg-cover-url').value = '';
   document.getElementById('cover-upload-area').classList.remove('has-img');
+  updateCoverEditorActions();
+}
+
+function updateCoverEditorActions() {
+  const recropButton = document.getElementById('mg-cover-recrop');
+  const clearButton = document.getElementById('mg-cover-clear');
+  const hasCover = !!(coverOriginalDataUrl || coverDataUrl);
+  if (recropButton) recropButton.style.display = hasCover ? '' : 'none';
+  if (clearButton) clearButton.style.display = hasCover ? '' : 'none';
+}
+
+function recropCurrentCover() {
+  const source = coverOriginalDataUrl || coverDataUrl;
+  if (!source) return;
+  openCropModal(source, {
+    targetType:'cover',
+    sourceType:/^https?:\/\//i.test(source) ? 'url' : 'file'
+  });
 }
 
 function renderModalRules(rules) {
@@ -1709,9 +1786,10 @@ function saveGame() {
 
   if (state.editGameId) {
     const g = state.games.find(g => g.id === state.editGameId);
-    Object.assign(g, {name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed, categoryId});
+    Object.assign(g, {name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coverOriginal: coverOriginalDataUrl || coverDataUrl, coopSlots, winCondition, tiesAllowed, categoryId});
+    if (g.coverCropped !== undefined) delete g.coverCropped;
   } else {
-    state.games.push({id: uid(), name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coopSlots, winCondition, tiesAllowed, categoryId});
+    state.games.push({id: uid(), name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coverOriginal: coverOriginalDataUrl || coverDataUrl, coopSlots, winCondition, tiesAllowed, categoryId});
   }
   closeModal('modal-add-game');
   renderGameListSetup();
@@ -3988,11 +4066,11 @@ function switchTab(id) {
 function openModal(id) { document.getElementById(id)?.classList.add('open'); }
 function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
 
-function showConfirm(title, msg, onOk) {
+function showConfirm(title, msg, onOk, okLabel = 'Bestätigen') {
   document.getElementById('confirm-title').textContent = title;
   document.getElementById('confirm-msg').textContent   = msg;
   const btn = document.getElementById('confirm-ok-btn');
-  btn.textContent = 'Bestätigen';
+  btn.textContent = okLabel;
   btn.className   = 'btn btn-danger';
   btn.onclick     = () => { closeModal('modal-confirm'); onOk(); };
   openModal('modal-confirm');
@@ -4200,7 +4278,12 @@ function toggleGameLibrarySelection(gameId, selected) {
   if (!state.games.some(g => g.id === gameId)) return;
   if (selected) selectedGameLibraryIds.add(gameId);
   else selectedGameLibraryIds.delete(gameId);
-  openGameLibraryModal('games');
+  openGameLibraryModal('games', true);
+}
+
+function toggleGameLibraryRowSelection(gameId, event) {
+  if (event?.target?.closest('button,input,label,a')) return;
+  toggleGameLibrarySelection(gameId, !selectedGameLibraryIds.has(gameId));
 }
 
 function selectAllVisibleLibraryGames() {
@@ -4230,7 +4313,7 @@ function deleteSelectedLibraryGames() {
   const count = idsToDelete.length;
   showConfirm(
     'Alle ausgewählten Spiele wirklich löschen?',
-    count + ' ausgewählte' + (count === 1 ? 's Spiel wird' : ' Spiele werden') + ' dauerhaft gelöscht.',
+    'Es werden nun ' + count + ' Spiele dauerhaft gelöscht. Bist du dir sicher?',
     () => {
       const confirmedIds = new Set(idsToDelete);
       state.games = state.games.filter(g => !confirmedIds.has(g.id));
@@ -4240,7 +4323,8 @@ function deleteSelectedLibraryGames() {
       saveLS();
       openGameLibraryModal('games');
       showToast(count + ' Spiel' + (count === 1 ? '' : 'e') + ' gelöscht');
-    }
+    },
+    count + ' Spiele löschen'
   );
 }
 
@@ -4271,15 +4355,23 @@ function toggleGameCategoryExpanded(id) {
   openGameLibraryModal('categories');
 }
 
-function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
+function openGameLibraryModal(tab = gameLibraryActiveTab || 'games', focusSearch = false) {
   gameLibraryActiveTab = tab;
   normalizeGameCategories();
   const c = document.getElementById('game-library-list');
+  const previousScrollTop = c?.scrollTop || 0;
   const p = document.querySelector('#modal-game-library .modal > p');
-  if (p) p.innerHTML = state.games.length + ' Spiel' + (state.games.length!==1?'e':'') + ' gespeichert. &nbsp;'
-    + '<button class="btn btn-secondary btn-sm" onclick="exportGames()" style="margin-right:4px">Exportieren</button>'
-    + '<button class="btn btn-secondary btn-sm" onclick="importGamesClick()">Importieren</button>'
-    + '<input type="file" id="import-games-file" accept=".json" style="display:none" onchange="importGamesFile(event)"/>';
+  if (p) {
+    p.style.display = 'flex';
+    p.style.alignItems = 'center';
+    p.style.justifyContent = 'space-between';
+    p.style.gap = '8px';
+    p.style.flexWrap = 'wrap';
+    p.innerHTML = '<span>' + state.games.length + ' Spiel' + (state.games.length!==1?'e':'') + ' gespeichert.</span>'
+      + '<span style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="exportGames()">Exportieren</button>'
+      + '<button class="btn btn-secondary btn-sm" onclick="importGamesClick()">Importieren</button></span>'
+      + '<input type="file" id="import-games-file" accept=".json" style="display:none" onchange="importGamesFile(event)"/>';
+  }
 
   const tabs = '<div class="library-tabs">'
     + '<button class="library-tab ' + (tab === 'games' ? 'active' : '') + '" onclick="openGameLibraryModal(\'games\')">Spiele</button>'
@@ -4294,71 +4386,52 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
 
   const TYPE_BADGE = {ffa:'JgJ','2v2':'TvT','3v1':'1vAll',coop:'Koop'};
   const TYPE_CLS = {ffa:'badge-ffa','2v2':'badge-2v2','3v1':'badge-3v1',coop:'badge-coop'};
-  const searchBar = '<div style="margin-bottom:12px;background:var(--surface);border-radius:8px;padding:10px">'
-    + '<label for="game-library-search" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em">Spiele suchen</label>'
-    + '<input type="text" id="game-library-search" placeholder="Name, Verlag, Kategorie, Typ..." value="' + esc(gameLibrarySearchQuery) + '" oninput="onGameLibrarySearch(this.value)"/>'
-    + '</div>';
+  const filteredGames = state.games.filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery));
+  const visibleIds = new Set(filteredGames.map(g => g.id));
+  selectedGameLibraryIds = new Set([...selectedGameLibraryIds].filter(id => visibleIds.has(id)));
+  const selectedCount = selectedGameLibraryIds.size;
+  const searchBar = '<div class="game-library-searchbar">'
+    + '<div class="game-library-search"><label for="game-library-search" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Spiele suchen</label>'
+    + '<span aria-hidden="true">🔎</span><input type="text" id="game-library-search" placeholder="Name, Verlag, Kategorie oder Typ" value="' + esc(gameLibrarySearchQuery) + '" oninput="onGameLibrarySearch(this.value)"/></div>'
+    + '<div class="game-library-count"><strong style="color:var(--text)">' + filteredGames.length + '</strong> von ' + state.games.length + ' Spielen sichtbar</div></div>';
+  const toolbar = '<div class="game-library-toolbar">'
+    + '<button class="btn btn-secondary btn-sm" onclick="selectAllVisibleLibraryGames()" ' + (filteredGames.length?'':'disabled') + '>Alle auswählen</button>'
+    + '<button class="btn btn-ghost btn-sm" onclick="clearGameLibrarySelection()" ' + (selectedCount?'':'disabled') + '>Auswahl aufheben</button>'
+    + '<button class="btn btn-danger btn-sm bulk-delete" onclick="deleteSelectedLibraryGames()" ' + (selectedCount?'':'disabled') + '>Alle ausgewählten Spiele löschen 🗑' + (selectedCount ? ' (' + selectedCount + ')' : '') + '</button></div>';
   if (!state.games.length) {
     c.innerHTML = tabs + '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
   } else {
-    const filteredGames = state.games.filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery));
-    const visibleIds = new Set(filteredGames.map(g => g.id));
-    selectedGameLibraryIds = new Set([...selectedGameLibraryIds].filter(id => visibleIds.has(id)));
-    const selectedCount = selectedGameLibraryIds.size;
-    const rows = filteredGames.map((g,i) => {
+    const rows = filteredGames.map(g => {
       const cover = g.coverImg
-        ? '<img src="' + esc(g.coverImg) + '" style="width:32px;height:32px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'">'
-        : '<span style="font-size:1.2rem">🎲</span>';
-      const devLine = g.dev ? '<div style="font-size:.72rem;color:var(--muted)">' + esc(g.dev) + '</div>' : '';
+        ? '<img src="' + esc(g.coverImg) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span style="display:none;padding:4px;text-align:center;font-size:.58rem;font-weight:800;line-height:1.1">' + esc(g.name) + '</span>'
+        : '<span style="padding:4px;text-align:center;font-size:.58rem;font-weight:800;line-height:1.1">' + esc(g.name) + '</span>';
       const durLabel = g.minDur && g.minDur !== g.dur ? g.minDur + '-' + g.dur : g.dur;
       const categoryLabel = getCategoryName(getGameCategoryId(g)) || '-';
-      const rowStyle = 'border-bottom:1px solid rgba(255,255,255,.05);transition:.15s;' + (g.enabled===false?'opacity:.45':'');
-      return '<tr style="' + rowStyle + '">'
-        + '<td style="padding:8px;text-align:center"><input type="checkbox" ' + (selectedGameLibraryIds.has(g.id)?'checked':'') + ' aria-label="' + esc(g.name) + ' zum Löschen auswählen" style="width:17px;height:17px;accent-color:var(--accent)" onchange="toggleGameLibrarySelection(\'' + g.id + '\',this.checked)"/></td>'
-        + '<td style="padding:8px;text-align:center"><input type="checkbox" ' + (g.enabled!==false?'checked':'') + ' style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleGameEnabled(\'' + g.id + '\',this.checked)"/></td>'
-        + '<td style="padding:8px;color:var(--muted);font-weight:700">' + (i+1) + '</td>'
-        + '<td style="padding:8px"><div style="display:flex;align-items:center;gap:8px">' + cover + '<div><div style="font-weight:600">' + esc(g.name) + '</div>' + devLine + '</div></div></td>'
-        + '<td style="padding:8px"><span class="badge ' + TYPE_CLS[g.type] + '">' + TYPE_BADGE[g.type] + '</span></td>'
-        + '<td style="padding:8px;color:var(--muted)">' + esc(categoryLabel) + '</td>'
-        + '<td style="padding:8px;color:var(--muted)">👥 ' + g.minP + '-' + g.maxP + '</td>'
-        + '<td style="padding:8px;color:var(--muted)">' + durLabel + 'min</td>'
-        + '<td style="padding:8px;display:flex;gap:4px">'
-        + '<button class="btn btn-secondary btn-icon btn-sm" onclick="closeModal(\'modal-game-library\');openAddGameModal(\'' + g.id + '\')" title="Bearbeiten">✏️</button>'
-        + '<button class="btn btn-danger btn-icon btn-sm" onclick="deleteGame(\'' + g.id + '\');openGameLibraryModal(\'games\')" title="Löschen">🗑️</button>'
-        + '</td></tr>';
+      const selected = selectedGameLibraryIds.has(g.id);
+      return '<div class="game-library-row ' + (selected?'selected ':'') + (g.enabled===false?'disabled':'') + '" role="button" tabindex="0" aria-pressed="' + (selected?'true':'false') + '" onclick="toggleGameLibraryRowSelection(\'' + g.id + '\',event)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleGameLibraryRowSelection(\'' + g.id + '\',event)}">'
+        + '<span class="game-library-select-mark" aria-hidden="true">✓</span>'
+        + '<div class="game-library-game"><div class="game-library-cover">' + cover + '</div><div style="min-width:0"><div class="game-library-name">' + esc(g.name) + '</div><div class="game-library-dev">' + esc(g.dev || 'Kein Verlag angegeben') + '</div></div></div>'
+        + '<div class="game-library-cell type"><span class="badge ' + TYPE_CLS[g.type] + '">' + TYPE_BADGE[g.type] + '</span></div>'
+        + '<div class="game-library-cell category" title="' + esc(categoryLabel) + '">📁 ' + esc(categoryLabel) + '</div>'
+        + '<div class="game-library-cell players">👥 ' + g.minP + '-' + g.maxP + '</div>'
+        + '<div class="game-library-cell duration">⏱ ' + durLabel + ' min</div>'
+        + '<label class="game-library-active" title="Im Marathon enthalten" onclick="event.stopPropagation()"><input type="checkbox" ' + (g.enabled!==false?'checked':'') + ' onchange="toggleGameEnabled(\'' + g.id + '\',this.checked);openGameLibraryModal(\'games\')"/><span>' + (g.enabled!==false?'Aktiv':'Aus') + '</span></label>'
+        + '<button class="btn btn-secondary btn-sm game-library-edit" onclick="event.stopPropagation();closeModal(\'modal-game-library\');openAddGameModal(\'' + g.id + '\')" title="Spiel bearbeiten">✏️ Bearbeiten</button>'
+        + '</div>';
     }).join('');
 
-    c.innerHTML = tabs + searchBar
-      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:10px 12px;background:var(--surface);border-radius:8px">'
-      + '<button class="btn btn-secondary btn-sm" onclick="selectAllVisibleLibraryGames()" ' + (filteredGames.length?'':'disabled') + '>Alle auswählen</button>'
-      + '<button class="btn btn-ghost btn-sm" onclick="clearGameLibrarySelection()" ' + (selectedCount?'':'disabled') + '>Auswahl aufheben</button>'
-      + '<button class="btn btn-danger btn-sm" onclick="deleteSelectedLibraryGames()" ' + (selectedCount?'':'disabled') + '>🗑 Ausgewählte Spiele löschen' + (selectedCount ? ' (' + selectedCount + ')' : '') + '</button>'
-      + '<span style="font-size:.75rem;color:var(--muted);margin-left:auto">' + filteredGames.length + ' von ' + state.games.length + ' Spielen sichtbar</span></div>'
-      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--surface);border-radius:8px">'
-      + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;font-weight:600">'
-      + '<input type="checkbox" id="select-all-games" style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleVisibleGames(this.checked)"/> Sichtbare auswählen / abwählen</label>'
-      + '<span style="font-size:.75rem;color:var(--muted);margin-left:auto">✓ = im Marathon aktiv</span></div>'
-      + '<table style="width:100%;border-collapse:collapse;font-size:.85rem">'
-      + '<thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
-      + '<th style="padding:6px 8px">Löschen</th><th style="padding:6px 8px">Aktiv</th><th style="text-align:left;padding:6px 8px">#</th><th style="text-align:left;padding:6px 8px">Spiel</th>'
-      + '<th style="text-align:left;padding:6px 8px">Typ</th><th style="text-align:left;padding:6px 8px">Kategorie</th><th style="text-align:left;padding:6px 8px">Spieler</th><th style="text-align:left;padding:6px 8px">Dauer</th><th></th>'
-      + '</tr></thead><tbody>' + rows + '</tbody></table>';
+    c.innerHTML = tabs + searchBar + toolbar
+      + '<div class="game-library-grid"><div class="game-library-head"><span>Spiel</span><span>Typ</span><span>Oberkategorie</span><span>Spieler</span><span>Dauer</span><span>Aktiv</span><span></span></div>'
+      + rows + '</div>';
 
     if (!filteredGames.length) {
-      c.innerHTML = tabs + searchBar
-        + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:10px 12px;background:var(--surface);border-radius:8px">'
-        + '<button class="btn btn-secondary btn-sm" disabled>Alle auswählen</button>'
-        + '<button class="btn btn-ghost btn-sm" disabled>Auswahl aufheben</button>'
-        + '<button class="btn btn-danger btn-sm" disabled>🗑 Ausgewählte Spiele löschen</button></div>'
-        + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
+      c.innerHTML = tabs + searchBar + toolbar + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
     }
-    const allEnabled = filteredGames.length && filteredGames.every(g=>g.enabled!==false);
-    const noneEnabled = filteredGames.length && filteredGames.every(g=>g.enabled===false);
-    const cb = document.getElementById('select-all-games');
-    if(cb){ cb.checked=!!allEnabled; cb.indeterminate=filteredGames.length && !allEnabled&&!noneEnabled; }
   }
   openModal('modal-game-library');
+  if (c) c.scrollTop = previousScrollTop;
   setTimeout(() => {
+    if (!focusSearch) return;
     const search = document.getElementById('game-library-search');
     if (!search) return;
     search.focus();
@@ -4794,7 +4867,8 @@ function openCropModal(src, target) {
   cropTarget = {
     targetType,
     jokerIndex: targetType === 'joker' ? target?.jokerIndex : null,
-    sourceType: target?.sourceType || 'file'
+    sourceType: target?.sourceType || 'file',
+    originalSource: target?.originalSource || ''
   };
   cropSrcDataUrl = src;
   const title = document.getElementById('crop-title');
@@ -4971,6 +5045,7 @@ function resizeCropBox(handle, dx, dy) {
 
 function applyCrop() {
   if (!cropTarget?.targetType) return;
+  const appliedTargetType = cropTarget.targetType;
   const img = document.getElementById('crop-img');
   const iw = img.naturalWidth, ih = img.naturalHeight;
   const canvas = document.createElement('canvas');
@@ -4986,9 +5061,24 @@ function applyCrop() {
   canvas.height = Math.max(1, Math.round(sh * outputScale));
   const ctx = canvas.getContext('2d');
 
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-  const result = canvas.toDataURL('image/jpeg', 0.88);
+  let result;
+  try {
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    result = canvas.toDataURL('image/jpeg', 0.88);
+  } catch (error) {
+    if (cropTarget.targetType === 'cover' && cropTarget.sourceType === 'url') {
+      coverDataUrl = coverOriginalDataUrl || cropSrcDataUrl;
+      updateCoverEditorActions();
+      closeModal('modal-crop');
+      cropTarget = null;
+      showToast('URL-Crop blockiert – Originalcover wird weiter verwendet.');
+      return;
+    }
+    showToast('Bild konnte nicht zugeschnitten werden.');
+    return;
+  }
   if (cropTarget.targetType === 'cover') {
+    coverOriginalDataUrl = cropTarget.originalSource || coverOriginalDataUrl || cropSrcDataUrl;
     coverDataUrl = result;
     const preview = document.getElementById('mg-cover-preview');
     if (preview) {
@@ -4996,6 +5086,7 @@ function applyCrop() {
       preview.style.display = 'block';
     }
     document.getElementById('cover-upload-area')?.classList.add('has-img');
+    updateCoverEditorActions();
     const urlInput = document.getElementById('mg-cover-url');
     if (urlInput) urlInput.value = '';
   } else {
@@ -5004,7 +5095,7 @@ function applyCrop() {
     joker.img = result;
   }
   closeModal('modal-crop');
-  if (cropTarget.targetType === 'joker') renderJokerSettingsList();
+  if (appliedTargetType === 'joker') renderJokerSettingsList();
   cropTarget = null;
 }
 
