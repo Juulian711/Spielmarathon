@@ -183,6 +183,18 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .mk-winner-cover{height:min(36vh,280px);border-radius:14px;background:#111;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:14px;font-size:4rem}
 .mk-winner-cover img{width:100%;height:100%;object-fit:contain}
 @keyframes mkWinnerPop{from{opacity:0;transform:scale(.8) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.all-games-banned-overlay{z-index:5000;background:radial-gradient(circle at center,rgba(120,0,20,.5),rgba(0,0,0,.94) 62%);cursor:default}
+.all-games-banned-overlay.open{pointer-events:all}
+.all-games-banned-modal{max-width:900px;text-align:center;background:linear-gradient(160deg,#2a080d,#10070a);border:3px solid #e94560;box-shadow:0 0 35px rgba(233,69,96,.65),0 30px 100px rgba(0,0,0,.8);overflow:hidden;animation:allGamesBannedPop .45s ease-out both}
+.all-games-banned-icon{font-size:clamp(4rem,12vw,8rem);line-height:1;filter:drop-shadow(0 0 22px rgba(233,69,96,.8));animation:allGamesBannedPulse 1.15s ease-in-out infinite}
+.all-games-banned-title{font-size:clamp(2rem,6vw,4.8rem);line-height:1.02;font-weight:1000;color:#fff;margin:18px 0 14px;text-shadow:0 0 22px rgba(233,69,96,.9)}
+.all-games-banned-text{font-size:clamp(1.15rem,2.5vw,1.8rem);font-weight:800;color:#ffb3bd}
+.all-games-banned-progress{height:7px;background:rgba(255,255,255,.1);border-radius:999px;overflow:hidden;margin:28px auto 0;max-width:520px}
+.all-games-banned-progress::after{content:'';display:block;height:100%;width:100%;background:linear-gradient(90deg,#e94560,#ff8b9d);transform-origin:left;transform:scaleX(1)}
+.all-games-banned-overlay.open .all-games-banned-progress::after{animation:allGamesBannedCountdown 5s linear both}
+@keyframes allGamesBannedPop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
+@keyframes allGamesBannedPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+@keyframes allGamesBannedCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:.7rem;font-weight:700;text-transform:uppercase}
 .badge-ffa{background:rgba(233,69,96,.2);color:#e94560}
 .badge-2v2{background:rgba(78,205,196,.2);color:#4ecdc4}
@@ -598,6 +610,15 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 
 <!-- ═══════════════════════ MODALS ═══════════════════════ -->
 
+<div class="modal-overlay all-games-banned-overlay" id="modal-all-games-banned" role="alertdialog" aria-modal="true" aria-labelledby="all-games-banned-title">
+  <div class="modal all-games-banned-modal">
+    <div class="all-games-banned-icon" aria-hidden="true">&#128683;</div>
+    <div class="all-games-banned-title" id="all-games-banned-title">ALLE SPIELE WURDEN GEBANNT!</div>
+    <div class="all-games-banned-text">Eine neue Spielauswahl startet.</div>
+    <div class="all-games-banned-progress" aria-hidden="true"></div>
+  </div>
+</div>
+
 <!-- Add/Edit Game -->
 <div class="modal-overlay" id="modal-add-game">
 <div class="modal">
@@ -662,7 +683,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
       </div>
       <img class="img-preview" id="mg-cover-preview"/>
     </div>
-    <input type="url" id="mg-cover-url" placeholder="https://… (alternativ URL)" style="margin-top:6px" oninput="handleCoverUrl(this.value)"/>
+    <input type="url" id="mg-cover-url" placeholder="https://… (alternativ URL)" style="margin-top:6px" onchange="handleCoverUrl(this.value)"/>
     <button class="btn btn-ghost btn-sm" onclick="clearCover()" style="margin-top:4px">✕ Bild entfernen</button>
   </div>
   <div class="form-group" id="mg-coop-bonus-wrap" style="display:none">
@@ -797,7 +818,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
     <input type="range" id="crop-zoom" min="10" max="500" value="100" oninput="updateCropZoom()"/>
   </div>
   <div class="modal-actions">
-    <button class="btn btn-ghost" onclick="closeModal('modal-crop')">Abbrechen</button>
+    <button class="btn btn-ghost" onclick="cancelCrop()">Abbrechen</button>
     <button class="btn btn-primary" onclick="applyCrop()">✂️ Zuschnitt übernehmen</button>
   </div>
 </div>
@@ -1176,6 +1197,7 @@ let state = {
   currentGameVotes:{},
   currentVoteId:null,
   currentVoteRoundId:null,
+  voteResetUntil:null,
   currentVoteWinner:null,
   currentVoteDisplayOrder:[],
   timeLimit:120,
@@ -1218,6 +1240,7 @@ function resetMarathonRuntime(options = {}) {
   state.currentGameVotes = {};
   state.currentVoteId = null;
   state.currentVoteRoundId = null;
+  state.voteResetUntil = null;
   state.currentVoteWinner = null;
   state.currentVoteDisplayOrder = [];
   state.marathonMode = getSelectedMarathonMode();
@@ -1624,12 +1647,10 @@ function handleCoverFile(e) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
-    coverDataUrl = ev.target.result;
-    const prev = document.getElementById('mg-cover-preview');
-    prev.src = coverDataUrl; prev.style.display = 'block';
-    document.getElementById('cover-upload-area').classList.add('has-img');
+    openCropModal(ev.target.result, {targetType:'cover'});
   };
   reader.readAsDataURL(file);
+  e.target.value = '';
 }
 
 function handleCoverUrl(url) {
@@ -1638,6 +1659,7 @@ function handleCoverUrl(url) {
   const prev = document.getElementById('mg-cover-preview');
   prev.src = url; prev.style.display = 'block';
   document.getElementById('cover-upload-area').classList.add('has-img');
+  openCropModal(url, {targetType:'cover', sourceType:'url'});
 }
 
 function clearCover() {
@@ -1701,8 +1723,13 @@ function saveGame() {
 function deleteGame(id) {
   showConfirm('Spiel löschen?', 'Dieser Vorgang kann nicht rückgängig gemacht werden.', () => {
     state.games = state.games.filter(g => g.id !== id);
+    if (typeof selectedGameLibraryIds !== 'undefined') selectedGameLibraryIds.delete(id);
+    renderGameListSetup();
     updateGameCountBadge();
     saveLS();
+    if (document.getElementById('modal-game-library')?.classList.contains('open')) {
+      openGameLibraryModal('games');
+    }
     showToast('Spiel gelöscht');
   });
 }
@@ -2421,8 +2448,10 @@ function startGameVoteRound() {
   state.currentVoteOptions = options;
   state.currentGameVotes = {};
   state.currentVoteWinner = null;
-  state.currentVoteId = uid();
+  state.currentVoteId = createUniqueGameVoteRoundId();
   state.currentVoteRoundId = state.currentVoteId;
+  state._lastVoteRoundId = state.currentVoteRoundId;
+  state.voteResetUntil = null;
   state.currentVoteDisplayOrder = [];
   state._gameVoteAnimating = false;
   state._setupPhase = 'gameVote';
@@ -2432,9 +2461,63 @@ function startGameVoteRound() {
   renderPlanList();
   updateProgressBar();
   switchTab('tab-current');
-  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+  const pushPromise = typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function'
+    ? fbPushState()
+    : Promise.resolve();
   saveCurrentToLS();
+  return pushPromise;
 }
+
+function createUniqueGameVoteRoundId() {
+  state._voteRoundSequence = (state._voteRoundSequence || 0) + 1;
+  let roundId;
+  do {
+    const randomPart = globalThis.crypto?.randomUUID?.() || uid();
+    roundId = `gameVote-${Date.now().toString(36)}-${state._voteRoundSequence.toString(36)}-${randomPart}`;
+  } while (roundId === state._lastVoteRoundId);
+  return roundId;
+}
+
+async function restartGameVoteRound() {
+  if (state._gameVoteRestarting) return;
+  state._gameVoteRestarting = true;
+  state._gameVoteAnimating = false;
+  state._setupPhase = 'voteReset';
+  state.voteResetUntil = Date.now() + 5000;
+  state.currentGameVotes = {};
+  state.currentVoteOptions = [];
+  state.currentVoteDisplayOrder = [];
+  state.currentVoteWinner = null;
+  state.currentVoteId = null;
+  state.currentVoteRoundId = null;
+  state.activeJokers = {};
+  resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
+
+  const overlay = document.getElementById('modal-all-games-banned');
+  if (overlay) overlay.classList.add('open');
+  saveCurrentToLS();
+
+  try {
+    if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') {
+      await fbPushState();
+    }
+  } catch (error) {
+    console.warn('[gameVote reset push failed]', error);
+  }
+
+  const remainingMs = Math.max(0, state.voteResetUntil - Date.now());
+  setTimeout(async () => {
+    try {
+      await startGameVoteRound();
+    } catch (error) {
+      console.warn('[gameVote start push failed]', error);
+    } finally {
+      state._gameVoteRestarting = false;
+      if (overlay) overlay.classList.remove('open');
+    }
+  }, remainingMs);
+}
+window.restartGameVoteRound = restartGameVoteRound;
 
 function getGameVoteCount() {
   return state.players.filter(p => {
@@ -4081,6 +4164,7 @@ function openGameLibraryModalOld() {
 
 let gameLibraryActiveTab = 'games';
 let gameLibrarySearchQuery = '';
+let selectedGameLibraryIds = new Set();
 let expandedGameCategories = new Set();
 let editingGameCategoryId = null;
 
@@ -4105,7 +4189,59 @@ function gameMatchesLibrarySearch(g, query) {
 
 function onGameLibrarySearch(value) {
   gameLibrarySearchQuery = value || '';
+  const visibleIds = new Set(state.games
+    .filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery))
+    .map(g => g.id));
+  selectedGameLibraryIds = new Set([...selectedGameLibraryIds].filter(id => visibleIds.has(id)));
   openGameLibraryModal('games');
+}
+
+function toggleGameLibrarySelection(gameId, selected) {
+  if (!state.games.some(g => g.id === gameId)) return;
+  if (selected) selectedGameLibraryIds.add(gameId);
+  else selectedGameLibraryIds.delete(gameId);
+  openGameLibraryModal('games');
+}
+
+function selectAllVisibleLibraryGames() {
+  state.games
+    .filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery))
+    .forEach(g => selectedGameLibraryIds.add(g.id));
+  openGameLibraryModal('games');
+}
+
+function clearGameLibrarySelection() {
+  selectedGameLibraryIds.clear();
+  openGameLibraryModal('games');
+}
+
+function deleteSelectedLibraryGames() {
+  const existingIds = new Set(state.games.map(g => g.id));
+  const visibleIds = new Set(state.games
+    .filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery))
+    .map(g => g.id));
+  const idsToDelete = [...selectedGameLibraryIds]
+    .filter(id => existingIds.has(id) && visibleIds.has(id));
+  if (!idsToDelete.length) {
+    selectedGameLibraryIds.clear();
+    openGameLibraryModal('games');
+    return;
+  }
+  const count = idsToDelete.length;
+  showConfirm(
+    'Alle ausgewählten Spiele wirklich löschen?',
+    count + ' ausgewählte' + (count === 1 ? 's Spiel wird' : ' Spiele werden') + ' dauerhaft gelöscht.',
+    () => {
+      const confirmedIds = new Set(idsToDelete);
+      state.games = state.games.filter(g => !confirmedIds.has(g.id));
+      selectedGameLibraryIds.clear();
+      renderGameListSetup();
+      updateGameCountBadge();
+      saveLS();
+      openGameLibraryModal('games');
+      showToast(count + ' Spiel' + (count === 1 ? '' : 'e') + ' gelöscht');
+    }
+  );
 }
 
 function normalizeMarathonMode(mode) {
@@ -4166,6 +4302,9 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
     c.innerHTML = tabs + '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
   } else {
     const filteredGames = state.games.filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery));
+    const visibleIds = new Set(filteredGames.map(g => g.id));
+    selectedGameLibraryIds = new Set([...selectedGameLibraryIds].filter(id => visibleIds.has(id)));
+    const selectedCount = selectedGameLibraryIds.size;
     const rows = filteredGames.map((g,i) => {
       const cover = g.coverImg
         ? '<img src="' + esc(g.coverImg) + '" style="width:32px;height:32px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'">'
@@ -4175,6 +4314,7 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
       const categoryLabel = getCategoryName(getGameCategoryId(g)) || '-';
       const rowStyle = 'border-bottom:1px solid rgba(255,255,255,.05);transition:.15s;' + (g.enabled===false?'opacity:.45':'');
       return '<tr style="' + rowStyle + '">'
+        + '<td style="padding:8px;text-align:center"><input type="checkbox" ' + (selectedGameLibraryIds.has(g.id)?'checked':'') + ' aria-label="' + esc(g.name) + ' zum Löschen auswählen" style="width:17px;height:17px;accent-color:var(--accent)" onchange="toggleGameLibrarySelection(\'' + g.id + '\',this.checked)"/></td>'
         + '<td style="padding:8px;text-align:center"><input type="checkbox" ' + (g.enabled!==false?'checked':'') + ' style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleGameEnabled(\'' + g.id + '\',this.checked)"/></td>'
         + '<td style="padding:8px;color:var(--muted);font-weight:700">' + (i+1) + '</td>'
         + '<td style="padding:8px"><div style="display:flex;align-items:center;gap:8px">' + cover + '<div><div style="font-weight:600">' + esc(g.name) + '</div>' + devLine + '</div></div></td>'
@@ -4189,18 +4329,28 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games') {
     }).join('');
 
     c.innerHTML = tabs + searchBar
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:10px 12px;background:var(--surface);border-radius:8px">'
+      + '<button class="btn btn-secondary btn-sm" onclick="selectAllVisibleLibraryGames()" ' + (filteredGames.length?'':'disabled') + '>Alle auswählen</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="clearGameLibrarySelection()" ' + (selectedCount?'':'disabled') + '>Auswahl aufheben</button>'
+      + '<button class="btn btn-danger btn-sm" onclick="deleteSelectedLibraryGames()" ' + (selectedCount?'':'disabled') + '>🗑 Ausgewählte Spiele löschen' + (selectedCount ? ' (' + selectedCount + ')' : '') + '</button>'
+      + '<span style="font-size:.75rem;color:var(--muted);margin-left:auto">' + filteredGames.length + ' von ' + state.games.length + ' Spielen sichtbar</span></div>'
       + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--surface);border-radius:8px">'
       + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;font-weight:600">'
       + '<input type="checkbox" id="select-all-games" style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleVisibleGames(this.checked)"/> Sichtbare auswählen / abwählen</label>'
-      + '<span style="font-size:.75rem;color:var(--muted);margin-left:auto">' + filteredGames.length + ' von ' + state.games.length + ' Spielen sichtbar</span></div>'
+      + '<span style="font-size:.75rem;color:var(--muted);margin-left:auto">✓ = im Marathon aktiv</span></div>'
       + '<table style="width:100%;border-collapse:collapse;font-size:.85rem">'
       + '<thead><tr style="color:var(--muted);font-size:.75rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.08)">'
-      + '<th style="padding:6px 8px">Aktiv</th><th style="text-align:left;padding:6px 8px">#</th><th style="text-align:left;padding:6px 8px">Spiel</th>'
+      + '<th style="padding:6px 8px">Löschen</th><th style="padding:6px 8px">Aktiv</th><th style="text-align:left;padding:6px 8px">#</th><th style="text-align:left;padding:6px 8px">Spiel</th>'
       + '<th style="text-align:left;padding:6px 8px">Typ</th><th style="text-align:left;padding:6px 8px">Kategorie</th><th style="text-align:left;padding:6px 8px">Spieler</th><th style="text-align:left;padding:6px 8px">Dauer</th><th></th>'
       + '</tr></thead><tbody>' + rows + '</tbody></table>';
 
     if (!filteredGames.length) {
-      c.innerHTML = tabs + searchBar + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
+      c.innerHTML = tabs + searchBar
+        + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:10px 12px;background:var(--surface);border-radius:8px">'
+        + '<button class="btn btn-secondary btn-sm" disabled>Alle auswählen</button>'
+        + '<button class="btn btn-ghost btn-sm" disabled>Auswahl aufheben</button>'
+        + '<button class="btn btn-danger btn-sm" disabled>🗑 Ausgewählte Spiele löschen</button></div>'
+        + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
     }
     const allEnabled = filteredGames.length && filteredGames.every(g=>g.enabled!==false);
     const noneEnabled = filteredGames.length && filteredGames.every(g=>g.enabled===false);
@@ -4423,7 +4573,10 @@ let cropDragging = false, cropDragStartX = 0, cropDragStartY = 0;
 let cropBase = {x:0,y:0,w:0,h:0};
 let cropBox = {x:0,y:0,w:0,h:0};
 let cropPointer = null;
-const CROP_RATIO = 63 / 88;
+const CROP_RATIOS = {
+  joker: 63 / 88,
+  cover: 1
+};
 
 function renderJokerSettingsList() {
   const c = document.getElementById('joker-settings-list');
@@ -4620,7 +4773,6 @@ function showVetoPicker(players, idx) {
 }
 
 function openJokerCrop(jokerIndex) {
-  cropTarget = {jokerIndex};
   // Open file picker
   const inp = document.createElement('input');
   inp.type = 'file';
@@ -4630,17 +4782,42 @@ function openJokerCrop(jokerIndex) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      cropSrcDataUrl = ev.target.result;
-      initCropEditor(cropSrcDataUrl);
+      openCropModal(ev.target.result, {targetType:'joker', jokerIndex});
     };
     reader.readAsDataURL(file);
   };
   inp.click();
 }
 
+function openCropModal(src, target) {
+  const targetType = target?.targetType === 'cover' ? 'cover' : 'joker';
+  cropTarget = {
+    targetType,
+    jokerIndex: targetType === 'joker' ? target?.jokerIndex : null,
+    sourceType: target?.sourceType || 'file'
+  };
+  cropSrcDataUrl = src;
+  const title = document.getElementById('crop-title');
+  if (title) title.textContent = targetType === 'cover' ? 'Spiele-Cover zuschneiden' : 'Jokerbild zuschneiden';
+  initCropEditor(src);
+}
+
+function getCropTargetRatio() {
+  return CROP_RATIOS[cropTarget?.targetType] || CROP_RATIOS.joker;
+}
+
+function cancelCrop() {
+  cropTarget = null;
+  cropPointer = null;
+  closeModal('modal-crop');
+}
+
 function initCropEditor(src) {
   const img = document.getElementById('crop-img');
-  img.src = src;
+  img.onload = null;
+  img.onerror = null;
+  if (cropTarget?.sourceType === 'url') img.crossOrigin = 'anonymous';
+  else img.removeAttribute('crossorigin');
   img.onload = () => {
     cropOffsetX = 0; cropOffsetY = 0; cropZoom = 1;
     document.getElementById('crop-zoom').value = 100;
@@ -4650,6 +4827,15 @@ function initCropEditor(src) {
       setupCropDrag();
     });
   };
+  img.onerror = () => {
+    if (cropTarget?.targetType === 'cover' && cropTarget?.sourceType === 'url') {
+      showToast('URL-Crop nicht möglich – Cover wird direkt verwendet.');
+    } else {
+      showToast('Bild konnte nicht geladen werden.');
+    }
+    cropTarget = null;
+  };
+  img.src = src;
 }
 
 function updateCropZoom() {
@@ -4715,9 +4901,10 @@ function setupCropDrag() {
 
 function initManualCropBox() {
   updateCropTransform();
-  const maxW = Math.min(cropBase.w, cropBase.h * CROP_RATIO);
+  const cropRatio = getCropTargetRatio();
+  const maxW = Math.min(cropBase.w, cropBase.h * cropRatio);
   const w = Math.max(70, maxW * 0.82);
-  const h = w / CROP_RATIO;
+  const h = w / cropRatio;
   cropBox = {
     x: cropBase.x + (cropBase.w - w) / 2,
     y: cropBase.y + (cropBase.h - h) / 2,
@@ -4783,6 +4970,7 @@ function resizeCropBox(handle, dx, dy) {
 }
 
 function applyCrop() {
+  if (!cropTarget?.targetType) return;
   const img = document.getElementById('crop-img');
   const iw = img.naturalWidth, ih = img.naturalHeight;
   const canvas = document.createElement('canvas');
@@ -4800,9 +4988,24 @@ function applyCrop() {
 
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
   const result = canvas.toDataURL('image/jpeg', 0.88);
-  jokerDraft[cropTarget.jokerIndex].img = result;
+  if (cropTarget.targetType === 'cover') {
+    coverDataUrl = result;
+    const preview = document.getElementById('mg-cover-preview');
+    if (preview) {
+      preview.src = result;
+      preview.style.display = 'block';
+    }
+    document.getElementById('cover-upload-area')?.classList.add('has-img');
+    const urlInput = document.getElementById('mg-cover-url');
+    if (urlInput) urlInput.value = '';
+  } else {
+    const joker = jokerDraft[cropTarget.jokerIndex];
+    if (!joker) return;
+    joker.img = result;
+  }
   closeModal('modal-crop');
-  renderJokerSettingsList();
+  if (cropTarget.targetType === 'joker') renderJokerSettingsList();
+  cropTarget = null;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5491,7 +5694,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
       // Never close goal handover, secret goal, or veto modals by clicking outside
-      const blocked = ['modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick'];
+      const blocked = ['modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick','modal-all-games-banned'];
       if (blocked.includes(overlay.id)) return;
       if (e.target===overlay) overlay.classList.remove('open');
     });
@@ -6055,7 +6258,7 @@ window.startSecretGoals = function startSecretGoals() {
 
 // Override Firebase state push: now includes current phase, joker definitions + images, and private picks.
 window.fbPushState = function fbPushState() {
-  if (!fbSyncEnabled || !fbSessionRef || !fbIsHost) return;
+  if (!fbSyncEnabled || !fbSessionRef || !fbIsHost) return Promise.resolve();
   const cleanGoals = {};
   Object.entries(state.secretGoals||{}).forEach(([name, goal]) => {
     if (!goal) return;
@@ -6084,6 +6287,7 @@ window.fbPushState = function fbPushState() {
     currentVoteOptions: state.currentVoteOptions || [],
     currentVoteId: state.currentVoteId || null,
     currentVoteRoundId: state.currentVoteRoundId || state.currentVoteId || null,
+    voteResetUntil: state.voteResetUntil || null,
     gameVoteVotedPlayers: Object.keys(state.currentGameVotes || {}),
     phase,
     marathonStarted: !!state._marathonStarted,
@@ -6091,7 +6295,10 @@ window.fbPushState = function fbPushState() {
     ts: Date.now(),
     hostAlive: true,
   };
-  fbSessionRef.update(data).catch(e=>console.error('FB push error:',e));
+  return fbSessionRef.update(data).catch(e=>{
+    console.error('FB push error:',e);
+    return false;
+  });
 };
 
 window.fbListenGuestActions = function fbListenGuestActions() {
@@ -6230,6 +6437,28 @@ window.openPlayerQRModal = function openPlayerQRModal() {
   openModal('modal-player-qr');
 };
 
+function resetMobileGameVoteStateForRound(sessionId, playerName, roundId, phase) {
+  if (!window._mobileObservedVoteRounds) window._mobileObservedVoteRounds = {};
+  const playerScope = `${sessionId}::${encodeURIComponent(normalizeVotePlayerName(playerName))}`;
+  const observedRoundId = window._mobileObservedVoteRounds[playerScope] || '';
+  const mustReset = phase === 'voteReset' || observedRoundId !== roundId;
+  if (!mustReset) return;
+
+  [
+    '_mobileGameVotes',
+    '_mobileGameVoteBans',
+    '_mobileGameVoteMode',
+    '_mobileGameVoteBanLimit',
+    '_mobileGameVoteSubmitted'
+  ].forEach(storeName => {
+    const store = window[storeName] || (window[storeName] = {});
+    Object.keys(store).forEach(key => {
+      if (key.startsWith(playerScope + '::')) delete store[key];
+    });
+  });
+  window._mobileObservedVoteRounds[playerScope] = phase === 'voteReset' ? '' : roundId;
+}
+
 window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playerName) {
   if (!fbInit()) {
     document.body.innerHTML = `<div style="padding:40px;text-align:center;color:#e94560;font-family:sans-serif">Firebase nicht verfügbar. Bitte über die veröffentlichte GitHub-Seite öffnen.</div>`;
@@ -6252,8 +6481,11 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     document.body.insertAdjacentHTML('beforeend', `<div id="mobile-joker-overlay" onclick="smMobileCloseJokerOverlay()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.86);align-items:center;justify-content:center;padding:14px"></div>`);
   }
 
+  if (window._mobilePlayerViewRef && window._mobilePlayerViewListener) {
+    window._mobilePlayerViewRef.off('value', window._mobilePlayerViewListener);
+  }
   const ref = firebase.database().ref(`sessions/${sessionId}`);
-  ref.on('value', snap => {
+  const mobilePlayerViewListener = snap => {
     const data = snap.val();
     const c = document.getElementById('mobile-content');
     if (!c) return;
@@ -6270,8 +6502,24 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     }
     playerName = currentPlayer.name;
 
+    const incomingVoteRoundId = data.currentVoteRoundId || data.currentVoteId || '';
+    resetMobileGameVoteStateForRound(sessionId, playerName, incomingVoteRoundId, data.phase);
+
     if (data.marathonFinished === true || data.phase === 'finished') {
       c.innerHTML = smMobileRenderEndScreen(data, playerName);
+      return;
+    }
+
+    if (data.phase === 'voteReset') {
+      c.innerHTML = `
+        <div style="min-height:62vh;display:flex;align-items:center;justify-content:center;text-align:center">
+          <div style="width:100%;background:linear-gradient(160deg,#2a080d,#14090c);border:2px solid #e94560;border-radius:20px;padding:34px 18px;box-shadow:0 0 28px rgba(233,69,96,.45)">
+            <div style="font-size:4.5rem;line-height:1;filter:drop-shadow(0 0 14px rgba(233,69,96,.8))">&#128683;</div>
+            <div style="font-size:1.65rem;line-height:1.12;font-weight:1000;color:#fff;margin:18px 0 12px">Alle Spiele wurden gebannt!</div>
+            <div style="font-size:1rem;line-height:1.5;font-weight:800;color:#ffb3bd">Neue Auswahl wird vorbereitet.</div>
+            <div style="font-size:.78rem;color:#999;margin-top:18px">Bitte kurz warten. Die neue Runde erscheint automatisch.</div>
+          </div>
+        </div>`;
       return;
     }
 
@@ -6467,7 +6715,10 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         }).join('') : '<div style="color:#888;font-size:.85rem;text-align:center;padding:12px">Warte auf Start...</div>'}
       </div>
       <div style="text-align:center;margin-top:14px;font-size:.7rem;color:#444">Aktualisiert automatisch in Echtzeit</div>`;
-  });
+  };
+  window._mobilePlayerViewRef = ref;
+  window._mobilePlayerViewListener = mobilePlayerViewListener;
+  ref.on('value', mobilePlayerViewListener);
 };
 
 window.smMobileToggleJoker = function smMobileToggleJoker(sessionId, playerName, jokerId) {
@@ -7173,14 +7424,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const entries = getShuffledGameVoteDisplayEntries();
     const activeEntries = entries.filter(e => !e.disabled);
     if (!activeEntries.length) {
-      state._gameVoteAnimating = false;
-      showToast('Alle Spiele wurden gebannt – neue Spielauswahl startet!');
-      state.currentGameVotes = {};
-      state.currentVoteOptions = [];
-      state.currentVoteDisplayOrder = [];
-      state.currentVoteId = null;
-      state.currentVoteRoundId = null;
-      setTimeout(() => startGameVoteRound(), 900);
+      window.restartGameVoteRound();
       return;
     }
     const winnerEntry = pickRandom(activeEntries);
