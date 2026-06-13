@@ -107,13 +107,13 @@ header::before{content:'';position:absolute;inset:0;background:radial-gradient(e
 .library-tab.active{background:var(--card);border-color:rgba(233,69,96,.45);color:var(--text);box-shadow:0 3px 12px rgba(0,0,0,.18)}
 .library-tab:hover:not(.active){background:rgba(255,255,255,.08);color:var(--text)}
 .game-library-searchbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:end;margin-bottom:12px}
-.game-library-search{position:relative}
-.game-library-search span{position:absolute;left:12px;bottom:10px;pointer-events:none;color:var(--muted)}
-.game-library-search input{padding-left:36px}
+.game-library-search-input{position:relative}
+.game-library-search-input span{position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);z-index:1;line-height:1}
+.game-library-search-input input{padding-left:40px}
 .game-library-count{font-size:.76rem;color:var(--muted);padding:0 2px 10px;white-space:nowrap}
 .game-library-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:14px;background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:10px}
-.game-library-toolbar .bulk-delete{margin-left:auto}
-.game-library-toolbar .bulk-delete:disabled{opacity:.28}
+.game-library-toolbar .bulk-activate{margin-left:auto}
+.game-library-toolbar .bulk-activate:disabled,.game-library-toolbar .bulk-delete:disabled{opacity:.28}
 .game-library-grid{display:flex;flex-direction:column;gap:7px}
 .game-library-head,.game-library-row{display:grid;grid-template-columns:minmax(220px,2fr) 78px 120px 84px 78px 82px 88px;gap:10px;align-items:center}
 .game-library-head{padding:0 14px 6px;color:var(--muted);font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
@@ -415,7 +415,8 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   .game-library-count{padding:0 2px}
   .game-library-toolbar{align-items:stretch}
   .game-library-toolbar .btn{flex:1;justify-content:center}
-  .game-library-toolbar .bulk-delete{flex-basis:100%;margin-left:0;order:3}
+  .game-library-toolbar .bulk-activate{margin-left:0}
+  .game-library-toolbar .bulk-delete{flex-basis:100%;order:3}
   .game-library-head{display:none}
   .game-library-grid{gap:10px}
   .game-library-row{display:grid;grid-template-columns:1fr auto;gap:11px 10px;padding:13px}
@@ -4271,14 +4272,14 @@ function onGameLibrarySearch(value) {
     .filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery))
     .map(g => g.id));
   selectedGameLibraryIds = new Set([...selectedGameLibraryIds].filter(id => visibleIds.has(id)));
-  openGameLibraryModal('games');
+  openGameLibraryModal('games', true);
 }
 
 function toggleGameLibrarySelection(gameId, selected) {
   if (!state.games.some(g => g.id === gameId)) return;
   if (selected) selectedGameLibraryIds.add(gameId);
   else selectedGameLibraryIds.delete(gameId);
-  openGameLibraryModal('games', true);
+  openGameLibraryModal('games');
 }
 
 function toggleGameLibraryRowSelection(gameId, event) {
@@ -4296,6 +4297,23 @@ function selectAllVisibleLibraryGames() {
 function clearGameLibrarySelection() {
   selectedGameLibraryIds.clear();
   openGameLibraryModal('games');
+}
+
+function activateSelectedLibraryGames() {
+  const existingIds = new Set(state.games.map(g => g.id));
+  const idsToActivate = [...selectedGameLibraryIds].filter(id => existingIds.has(id));
+  if (!idsToActivate.length) {
+    selectedGameLibraryIds.clear();
+    openGameLibraryModal('games');
+    return;
+  }
+  const selectedIds = new Set(idsToActivate);
+  state.games.forEach(g => {
+    if (selectedIds.has(g.id)) g.enabled = true;
+  });
+  saveLS();
+  openGameLibraryModal('games');
+  showToast(idsToActivate.length + ' Spiel' + (idsToActivate.length === 1 ? '' : 'e') + ' aktiviert');
 }
 
 function deleteSelectedLibraryGames() {
@@ -4392,11 +4410,12 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games', focusSearch
   const selectedCount = selectedGameLibraryIds.size;
   const searchBar = '<div class="game-library-searchbar">'
     + '<div class="game-library-search"><label for="game-library-search" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Spiele suchen</label>'
-    + '<span aria-hidden="true">🔎</span><input type="text" id="game-library-search" placeholder="Name, Verlag, Kategorie oder Typ" value="' + esc(gameLibrarySearchQuery) + '" oninput="onGameLibrarySearch(this.value)"/></div>'
+    + '<div class="game-library-search-input"><span aria-hidden="true">🔎</span><input type="text" id="game-library-search" placeholder="Name, Verlag, Kategorie oder Typ" value="' + esc(gameLibrarySearchQuery) + '" oninput="onGameLibrarySearch(this.value)"/></div></div>'
     + '<div class="game-library-count"><strong style="color:var(--text)">' + filteredGames.length + '</strong> von ' + state.games.length + ' Spielen sichtbar</div></div>';
   const toolbar = '<div class="game-library-toolbar">'
     + '<button class="btn btn-secondary btn-sm" onclick="selectAllVisibleLibraryGames()" ' + (filteredGames.length?'':'disabled') + '>Alle auswählen</button>'
     + '<button class="btn btn-ghost btn-sm" onclick="clearGameLibrarySelection()" ' + (selectedCount?'':'disabled') + '>Auswahl aufheben</button>'
+    + '<button class="btn btn-green btn-sm bulk-activate" onclick="activateSelectedLibraryGames()" ' + (selectedCount?'':'disabled') + '>Ausgewählte Spiele aktivieren</button>'
     + '<button class="btn btn-danger btn-sm bulk-delete" onclick="deleteSelectedLibraryGames()" ' + (selectedCount?'':'disabled') + '>Alle ausgewählten Spiele löschen 🗑' + (selectedCount ? ' (' + selectedCount + ')' : '') + '</button></div>';
   if (!state.games.length) {
     c.innerHTML = tabs + '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
