@@ -1253,6 +1253,7 @@ let state = {
   voteResetUntil:null,
   currentVoteWinner:null,
   currentVoteDisplayOrder:[],
+  pendingTipster:null,
   timeLimit:120,
   marathonMode:'random',
   startTime:null,
@@ -1297,6 +1298,7 @@ function resetMarathonRuntime(options = {}) {
   state.voteResetUntil = null;
   state.currentVoteWinner = null;
   state.currentVoteDisplayOrder = [];
+  state.pendingTipster = null;
   state.marathonMode = getSelectedMarathonMode();
   state.currentIdx = -1;
   state.scores = {};
@@ -1406,6 +1408,7 @@ function buildSessionSnapshot(name, finalize=false) {
     currentVoteRoundId: state.currentVoteRoundId || state.currentVoteId || null,
     currentVoteWinner: state.currentVoteWinner || null,
     currentVoteDisplayOrder: state.currentVoteDisplayOrder || [],
+    pendingTipster: state.pendingTipster || null,
     timeLimit: state.timeLimit,
     marathonMode: normalizeMarathonMode(state.marathonMode),
     startTime: state.startTime,
@@ -2489,6 +2492,11 @@ function rerollRule() {
 //  GAME FLOW
 // ═══════════════════════════════════════════════════════════
 function nextGame() {
+  if (isTipsterChoosing()) {
+    showToast('Bitte warten: Tipp-Joker-Auswahl läuft noch.');
+    switchTab('tab-current');
+    return;
+  }
   // Don't allow advancing if current game hasn't been submitted yet
   const entry = state.plan[state.currentIdx];
   if (entry && !entry.done) {
@@ -2549,6 +2557,7 @@ function startGameVoteRound() {
   state.voteResetUntil = null;
   state.currentVoteDisplayOrder = [];
   state._gameVoteAnimating = false;
+  state._gameVoteRevealShown = false;
   state._setupPhase = 'gameVote';
   state.activeJokers = {};
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
@@ -2585,6 +2594,7 @@ async function restartGameVoteRound() {
   state.currentVoteWinner = null;
   state.currentVoteId = null;
   state.currentVoteRoundId = null;
+  state._gameVoteRevealShown = false;
   state.activeJokers = {};
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
 
@@ -2678,9 +2688,12 @@ function getModeJokerUsesForPicks(picks = []) {
 function ensureJokerUsesForPlayer(playerName) {
   const playerKey = getGameVotePlayerKey(playerName);
   if (!state.jokerUses) state.jokerUses = {};
+  const owned = (state.jokers?.[playerName] || []).map(j => j.id);
   if (!state.jokerUses[playerKey]) {
-    const owned = (state.jokers?.[playerName] || []).map(j => j.id);
     state.jokerUses[playerKey] = getModeJokerUsesForPicks(owned);
+  } else {
+    if (owned.includes('magnet') && state.jokerUses[playerKey].magnet === undefined) state.jokerUses[playerKey].magnet = getModeJokerInitialUses('magnet');
+    if (owned.includes('ban') && state.jokerUses[playerKey].ban === undefined) state.jokerUses[playerKey].ban = getModeJokerInitialUses('ban');
   }
   return state.jokerUses[playerKey];
 }
@@ -2689,12 +2702,109 @@ function playerOwnsJoker(playerName, jokerId) {
   return (state.jokers?.[playerName] || []).some(j => j.id === jokerId);
 }
 
+function isTipsterChoosing(source = state) {
+  return source?.pendingTipster?.status === 'choosing';
+}
+
+function getCurrentGameEntry(source = state) {
+  return source?.plan?.[source.currentIdx] || null;
+}
+
+function getTipsterBonusForGameType(type) {
+  return type === 'ffa' ? 4 : 2;
+}
+
+function startPendingTipster(playerName) {
+  if (state.pendingTipster) return false;
+  const entry = getCurrentGameEntry();
+  if (!entry || entry.done) return false;
+  const g = state.games.find(x => x.id === entry.gameId);
+  state.pendingTipster = {
+    playerName,
+    status: 'choosing',
+    pickedPlayerName: null,
+    gameIndex: state.currentIdx,
+    gameId: entry.gameId,
+    gameName: g?.name || '',
+    actionId: uid(),
+    ts: Date.now()
+  };
+  showToast(`🔮 ${playerName} hat den Tipp-Joker gezündet.`);
+  renderCurrentGame();
+  renderJokerArea();
+  saveCurrentToLS();
+  return true;
+}
+
+function lockPendingTipsterPick(playerName, pickedPlayerName) {
+  const pending = state.pendingTipster;
+  const entry = getCurrentGameEntry();
+  if (!pending || pending.status !== 'choosing') return false;
+  if (pending.playerName !== playerName) return false;
+  if (!entry || state.currentIdx !== pending.gameIndex || entry.gameId !== pending.gameId) return false;
+  if (!state.players.some(p => p.name === pickedPlayerName)) return false;
+  pending.status = 'locked';
+  pending.pickedPlayerName = pickedPlayerName;
+  pending.lockedAt = Date.now();
+  const pj = state.jokers?.[playerName]?.find(j => j.id === 'tipster');
+  if (pj) pj.used = true;
+  showToast(`🔮 ${playerName} hat den Tipp abgegeben.`);
+  renderCurrentGame();
+  renderJokerArea();
+  saveCurrentToLS();
+  return true;
+}
+
+function getActualWinningPlayers(type, entry) {
+  if (type === 'ffa') {
+    const minPlace = Math.min(...Object.values(resultSel.ffa).map(v => parseInt(v, 10)).filter(Boolean));
+    return Object.entries(resultSel.ffa).filter(([, place]) => parseInt(place, 10) === minPlace).map(([name]) => name);
+  }
+  if (type === '2v2') return resultSel['2v2'] === 'A' ? [...(entry.teams?.teamA || [])] : [...(entry.teams?.teamB || [])];
+  if (type === '3v1') return resultSel['3v1'] === 'solo' ? [entry.teams?.solo].filter(Boolean) : [...(entry.teams?.team || [])];
+  if (type === 'coop') return resultSel.coop === 'win' ? state.players.map(p => p.name) : [];
+  return [];
+}
+
+function resolvePendingTipster(type, entry, pointsMap) {
+  const pending = state.pendingTipster;
+  if (!pending || pending.status !== 'locked') return null;
+  if (pending.gameIndex !== state.currentIdx || pending.gameId !== entry.gameId) return null;
+  const actualWinners = getActualWinningPlayers(type, entry);
+  const correct = actualWinners.includes(pending.pickedPlayerName);
+  const bonus = correct ? getTipsterBonusForGameType(type) : 0;
+  if (correct) pointsMap[pending.playerName] = (pointsMap[pending.playerName] || 0) + bonus;
+  const result = {
+    playerName: pending.playerName,
+    pickedPlayerName: pending.pickedPlayerName,
+    actualWinners,
+    correct,
+    bonus
+  };
+  state.pendingTipster = null;
+  return result;
+}
+
+function showTipsterResolution(result) {
+  if (!result) return;
+  const content = `
+    <div style="text-align:center;padding:18px;border-radius:14px;background:${result.correct?'linear-gradient(135deg,rgba(78,205,196,.16),rgba(255,215,0,.1))':'rgba(233,69,96,.1)'};border:2px solid ${result.correct?'var(--green)':'var(--accent)'}">
+      <div style="font-size:3rem;margin-bottom:8px">🔮</div>
+      <div style="font-size:1.15rem;font-weight:900;color:var(--gold);margin-bottom:12px">${esc(result.playerName)}s Tipp: ${esc(result.pickedPlayerName || '?')}</div>
+      <div style="font-size:.95rem;margin-bottom:10px">🏆 Tatsächlicher Sieger: <strong>${esc((result.actualWinners || []).join(', ') || 'niemand')}</strong></div>
+      <div style="font-size:1.05rem;font-weight:900;color:${result.correct?'var(--green)':'var(--accent)'}">${result.correct ? `Richtig! ${esc(result.playerName)} erhält +${result.bonus} Punkte.` : 'Falsch - keine Bonuspunkte.'}</div>
+    </div>`;
+  document.getElementById('double-result-content').innerHTML = content;
+  openModal('modal-double-result');
+}
+
 function makeGameVoteRecord(player, action) {
   return {
     playerKey: getGameVotePlayerKey(player),
     playerName: player.name,
     gameId: action.gameId || null,
-    modeJoker: action.modeJoker || null,
+    modeJoker: action.useMagnet ? 'magnet' : (action.modeJoker || null),
+    useMagnet: !!action.useMagnet || action.modeJoker === 'magnet',
     bannedGameIds: Array.isArray(action.bannedGameIds) ? action.bannedGameIds : [],
     ts: action.ts || Date.now()
   };
@@ -2707,7 +2817,8 @@ function getVoteRecord(playerKey, rawVote) {
       playerKey,
       playerName: rawVote.playerName || player?.name || playerKey,
       gameId: rawVote.gameId || null,
-      modeJoker: rawVote.modeJoker || null,
+      modeJoker: rawVote.useMagnet ? 'magnet' : (rawVote.modeJoker || null),
+      useMagnet: !!rawVote.useMagnet || rawVote.modeJoker === 'magnet',
       bannedGameIds: Array.isArray(rawVote.bannedGameIds) ? rawVote.bannedGameIds : [],
       ts: rawVote.ts || 0
     };
@@ -2717,6 +2828,7 @@ function getVoteRecord(playerKey, rawVote) {
     playerName: player?.name || playerKey,
     gameId: rawVote || null,
     modeJoker: null,
+    useMagnet: false,
     bannedGameIds: [],
     ts: 0
   };
@@ -2906,7 +3018,10 @@ function updateProgressBar() {
   const remaining = state.plan.filter(e=>!e.done).length;
   const btn = document.getElementById('btn-next-game');
   if (btn) {
-    if (isMarioKartMode() && state._setupPhase === 'gameVote') {
+    if (isTipsterChoosing()) {
+      btn.textContent = '🔮 Tippabgabe läuft';
+      btn.className = 'btn btn-secondary';
+    } else if (isMarioKartMode() && state._setupPhase === 'gameVote') {
       btn.textContent = '📱 Spielauswahl läuft';
       btn.className = 'btn btn-secondary';
     } else if (isMarioKartMode()) {
@@ -3004,7 +3119,17 @@ function renderCurrentGame() {
   `;
   updateProgressBar();
 
-  document.getElementById('result-input-area').innerHTML = buildResultInput(g, entry);
+  const resultArea = document.getElementById('result-input-area');
+  if (isTipsterChoosing()) {
+    resultArea.innerHTML = `
+      <div style="text-align:center;padding:18px;border-radius:14px;background:rgba(255,215,0,.1);border:2px solid var(--gold)">
+        <div style="font-size:2.4rem;margin-bottom:8px">🔮</div>
+        <div style="font-size:1.05rem;font-weight:900;color:var(--gold)">${esc(state.pendingTipster.playerName)} gibt gerade seinen Tipp ab</div>
+        <div style="font-size:.85rem;color:var(--muted);margin-top:6px">Spielstart und Joker sind bis zur Tippabgabe gesperrt.</div>
+      </div>`;
+  } else {
+    resultArea.innerHTML = buildResultInput(g, entry);
+  }
 }
 
 function buildResultInput(g, entry) {
@@ -3155,6 +3280,10 @@ function selectCoop(r) {
 }
 
 function submitResult(type) {
+  if (isTipsterChoosing()) {
+    showToast('Bitte warten: Tipp-Joker-Auswahl läuft noch.');
+    return;
+  }
   const entry = state.plan[state.currentIdx];
   const g = state.games.find(g=>g.id===entry.gameId);
   let pointsMap = {};
@@ -3195,35 +3324,7 @@ function submitResult(type) {
     });
   }
 
-  // Tipp-Joker — +4 for FFA, +2 for Team/1vAll
-  Object.entries(state.activeJokers).forEach(([k,v]) => {
-    if (k.endsWith('_tip')) {
-      const tipPlayer = k.replace('_tip','');
-      const tippedWinner = v;
-      let correct = false;
-      let bonus = 0;
-      if (type==='ffa') {
-        const actualWinner = Object.entries(resultSel.ffa).find(([,pl])=>pl===1)?.[0]||'';
-        correct = tippedWinner === actualWinner;
-        bonus = 4;
-      } else if (type==='2v2') {
-        correct = (resultSel['2v2']==='A'&&entry.teams.teamA.includes(tippedWinner))
-               || (resultSel['2v2']==='B'&&entry.teams.teamB.includes(tippedWinner));
-        bonus = 2;
-      } else if (type==='3v1') {
-        const actualWinner = resultSel['3v1']==='solo' ? entry.teams.solo : entry.teams.team[0];
-        correct = tippedWinner === actualWinner
-               || (resultSel['3v1']==='team' && entry.teams.team.includes(tippedWinner));
-        bonus = 2;
-      }
-      if (correct) {
-        pointsMap[tipPlayer] = (pointsMap[tipPlayer]||0) + bonus;
-        showToast(`🔮 Tipp korrekt! +${bonus} für ${tipPlayer} 🎉`);
-      } else {
-        showToast(`🔮 Tipp falsch für ${tipPlayer}`);
-      }
-    }
-  });
+  const tipsterResult = resolvePendingTipster(type, entry, pointsMap);
 
   // Apply Doppelt-oder-Nichts with feedback
   const doubleResults = [];
@@ -3257,7 +3358,8 @@ function submitResult(type) {
   showToast('Punkte gespeichert! 🎉');
   switchTab('tab-score');
   // Show Doppelt-oder-Nichts results prominently
-  if (doubleResults.length) setTimeout(()=>showDoubleResults(doubleResults), 500);
+  if (tipsterResult) setTimeout(()=>showTipsterResolution(tipsterResult), 450);
+  if (doubleResults.length) setTimeout(()=>showDoubleResults(doubleResults), tipsterResult ? 2200 : 500);
   // Check secret goals live
   setTimeout(()=>checkSecretGoalsLive(), 400);
   setTimeout(()=>checkComeback(), 800);
@@ -3315,7 +3417,8 @@ function renderJokerArea() {
               <div class="joker-name">${jd.name}</div>
               <div class="joker-desc">${jd.desc}</div>
             </div>
-            ${!jstate.used && !revengeBlocked ? `<button class="joker-use-btn" onclick="openJokerModal('${esc(p.name)}','${jstate.id}')" ${(jstate.id==='underdog'||jstate.id==='veto')?'style="display:none"':''}>Einsetzen</button>` : ''}
+            ${!jstate.used && !revengeBlocked && jstate.id!=='tipster' ? `<button class="joker-use-btn" onclick="openJokerModal('${esc(p.name)}','${jstate.id}')" ${(jstate.id==='underdog'||jstate.id==='veto')?'style="display:none"':''}>Einsetzen</button>` : ''}
+            ${!jstate.used && jstate.id==='tipster' ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--muted);font-weight:700">Nur am Handy einsetzbar</div>` : ''}
             ${!jstate.used && revengeBlocked ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--muted);font-weight:700">Erst nach dem ersten Spiel verfügbar</div>` : ''}
             ${jstate.id==='underdog'&&!jstate.used ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--green);font-weight:700">⚡ Wird automatisch ausgelöst</div>` : ''}
           </div>`;
@@ -3370,6 +3473,10 @@ function showGoalReview() {
 }
 
 function openJokerModal(playerName, jokerId) {
+  if (isTipsterChoosing()) {
+    showToast(`${state.pendingTipster.playerName} gibt gerade den Tipp ab. Joker sind kurz gesperrt.`);
+    return;
+  }
   if (jokerId === 'skip' && !shouldGiveFreeSkip()) {
     showToast('Skip gibt es nur im Zufallsmodus.');
     return;
@@ -3412,8 +3519,9 @@ function confirmJoker() {
   }
 
   if (j==='tipster') {
-    const tip = document.getElementById('tipster-pick')?.value;
-    if (tip) { state.activeJokers[`${p}_tip`] = tip; showToast(`🔮 ${p} tippt auf ${tip}`); }
+    showToast('Tipp-Joker bitte am Handy einsetzen.');
+    closeModal('modal-joker');
+    return;
   }
 
   if (j==='revenge') {
@@ -3465,6 +3573,9 @@ function confirmJoker() {
   if (j==='skip') {
     const entry = state.plan[state.currentIdx];
     if (!entry) { closeModal('modal-joker'); return; }
+    if (state.pendingTipster?.gameIndex === state.currentIdx && state.pendingTipster?.gameId === entry.gameId) {
+      state.pendingTipster = null;
+    }
     // Remove the current game, mark as skipped
     const skippedGame = state.games.find(g=>g.id===entry.gameId);
     state.skipped.push({gameId: skippedGame?.id || entry.gameId, gameName: skippedGame?.name || '?', by: p});
@@ -3747,6 +3858,7 @@ function loadSession(id) {
   state.currentVoteRoundId = s.currentVoteRoundId || s.currentVoteId || null;
   state.currentVoteWinner = s.currentVoteWinner || null;
   state.currentVoteDisplayOrder = Array.isArray(s.currentVoteDisplayOrder) ? s.currentVoteDisplayOrder : [];
+  state.pendingTipster = s.pendingTipster || null;
   state.secretGoals  = s.secretGoals  || {};
   state.secretGoalExtras = s.secretGoalExtras || {};
   state.comebackGiven = s.comebackGiven || {};
@@ -4159,6 +4271,7 @@ function saveCurrentToLS() {
     gameCategories:state.gameCategories || [],
     currentVoteOptions:state.currentVoteOptions || [], currentGameVotes:state.currentGameVotes || {}, currentVoteId:state.currentVoteId || null, currentVoteRoundId:state.currentVoteRoundId || state.currentVoteId || null, currentVoteWinner:state.currentVoteWinner || null,
     currentVoteDisplayOrder:state.currentVoteDisplayOrder || [],
+    pendingTipster:state.pendingTipster || null,
     secretGoals:state.secretGoals, secretGoalExtras:state.secretGoalExtras, comebackGiven:state.comebackGiven, goalAchieved:state.goalAchieved, giftedJokers:state.giftedJokers,
     setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
   };
@@ -6197,6 +6310,13 @@ function fbGuestRequestJoker(sessionId, playerName, jokerId) {
       showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
       return;
     }
+    if (jokerId === 'tipster') {
+      ref.child('guestActions').push({
+        type:'startTipster', playerName, ts:Date.now()
+      });
+      showToast('🔮 Tipp-Joker gestartet.');
+      return;
+    }
     ref.child('guestActions').push({
       type:'useJoker', playerName, jokerId, ts:Date.now()
     });
@@ -6488,6 +6608,12 @@ window.fbPushState = function fbPushState() {
     id:g.id, name:g.name, type:g.type, dur:g.dur, minP:g.minP, maxP:g.maxP, categoryId:g.categoryId || ''
   }));
   const phase = state._marathonFinished ? 'finished' : (state._setupPhase || (state._marathonStarted ? 'marathon' : 'setup'));
+  const pendingTipster = state.pendingTipster ? {
+    playerName: state.pendingTipster.playerName,
+    status: state.pendingTipster.status,
+    gameIndex: state.pendingTipster.gameIndex,
+    gameId: state.pendingTipster.gameId
+  } : null;
   console.log('[fbPushState]', phase, (state.currentVoteOptions || []).length, state.currentGameVotes || {});
   const data = {
     players: state.players,
@@ -6502,6 +6628,7 @@ window.fbPushState = function fbPushState() {
     secretGoals: cleanGoals,
     goalAchieved: state.goalAchieved,
     activeJokers: state.activeJokers,
+    pendingTipster,
     games: cleanGames,
     marathonMode: normalizeMarathonMode(state.marathonMode),
     currentVoteOptions: state.currentVoteOptions || [],
@@ -6558,6 +6685,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       const actionRoundId = action.voteRoundId || action.voteId || null;
       const currentRoundId = state.currentVoteRoundId || state.currentVoteId || null;
       const modeJoker = action.modeJoker === 'magnet' ? 'magnet' : action.modeJoker === 'ban' ? 'ban' : null;
+      const useMagnet = !!action.useMagnet || modeJoker === 'magnet';
       const bannedGameIds = Array.isArray(action.bannedGameIds)
         ? [...new Set(action.bannedGameIds)].filter(id => optionIds.has(id))
         : [];
@@ -6565,13 +6693,12 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       if (!p) ignored = 'unknown player';
       else if (state._setupPhase !== 'gameVote') ignored = 'not in gameVote phase';
       else if (!actionRoundId || actionRoundId !== currentRoundId) ignored = 'stale voteRoundId';
-      else if (modeJoker === 'ban' && !bannedGameIds.length) ignored = 'invalid bannedGameIds';
-      else if (modeJoker === 'ban' && !optionIds.has(action.gameId)) ignored = 'invalid favorite gameId';
-      else if (modeJoker === 'ban' && bannedGameIds.includes(action.gameId)) ignored = 'favorite is banned by same player';
-      else if (modeJoker !== 'ban' && !optionIds.has(action.gameId)) ignored = 'invalid gameId';
-      else if (modeJoker && !playerOwnsJoker(p.name, modeJoker)) ignored = 'joker not owned';
-      else if (modeJoker === 'magnet' && (ensureJokerUsesForPlayer(p.name).magnet || 0) < 1) ignored = 'no magnet uses left';
-      else if (modeJoker === 'ban' && (ensureJokerUsesForPlayer(p.name).ban || 0) < bannedGameIds.length) ignored = 'not enough ban uses left';
+      else if (!optionIds.has(action.gameId)) ignored = 'invalid gameId';
+      else if (bannedGameIds.includes(action.gameId)) ignored = 'favorite is banned by same player';
+      else if (useMagnet && !playerOwnsJoker(p.name, 'magnet')) ignored = 'magnet not owned';
+      else if (bannedGameIds.length && !playerOwnsJoker(p.name, 'ban')) ignored = 'ban not owned';
+      else if (useMagnet && (ensureJokerUsesForPlayer(p.name).magnet || 0) < 1) ignored = 'no magnet uses left';
+      else if (bannedGameIds.length && (ensureJokerUsesForPlayer(p.name).ban || 0) < bannedGameIds.length) ignored = 'not enough ban uses left';
       if (ignored) {
         console.warn('[vote ignored]', ignored, action);
         window.renderGameVoteHost();
@@ -6589,15 +6716,22 @@ window.fbListenGuestActions = function fbListenGuestActions() {
         return;
       }
       const modeUses = ensureJokerUsesForPlayer(p.name);
-      if (modeJoker === 'magnet') modeUses.magnet -= 1;
-      if (modeJoker === 'ban') modeUses.ban -= bannedGameIds.length;
-      if (modeJoker && (modeUses[modeJoker] || 0) <= 0) {
-        const ownedJoker = state.jokers?.[p.name]?.find(j => j.id === modeJoker);
-        if (ownedJoker) ownedJoker.used = true;
+      if (useMagnet) modeUses.magnet -= 1;
+      if (bannedGameIds.length) modeUses.ban -= bannedGameIds.length;
+      ['magnet','ban'].forEach(jokerId => {
+        if ((modeUses[jokerId] || 0) <= 0) {
+          const ownedJoker = state.jokers?.[p.name]?.find(j => j.id === jokerId);
+          if (ownedJoker) ownedJoker.used = true;
+        }
+      });
+      const effectiveModeJoker = useMagnet ? 'magnet' : (bannedGameIds.length ? 'ban' : null);
+      if (useMagnet && bannedGameIds.length) {
+        // New combined flow uses useMagnet + bannedGameIds; modeJoker stays magnet for old display compatibility.
       }
       const voteRecord = makeGameVoteRecord(p, {
         ...action,
-        modeJoker,
+        modeJoker: effectiveModeJoker,
+        useMagnet,
         bannedGameIds,
         gameId: action.gameId
       });
@@ -6609,10 +6743,44 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       const allVoted = allGameVotesIn();
       showToast(allVoted ? '🏁 Alle Spielwahlen sind da!' : `📱 ${p.name} hat gewählt ✓`);
       markProcessed();
-      if (allVoted) setTimeout(() => window.runMarioKartSelectionAnimation(), 900);
+      if (allVoted) setTimeout(() => window.showGameVoteJokerRevealThenStart(), 900);
+      return;
+    }
+    if (action.type === 'startTipster') {
+      const p = findPlayerByVoteName(action.playerName);
+      let ignored = '';
+      if (!p) ignored = 'unknown player';
+      else if (state._setupPhase !== 'marathon' || state.currentIdx < 0) ignored = 'not in active game';
+      else if (state.pendingTipster) ignored = 'another tipster is active';
+      else if (!playerOwnsJoker(p.name, 'tipster')) ignored = 'tipster not owned';
+      else if (state.jokers?.[p.name]?.find(j => j.id === 'tipster')?.used) ignored = 'tipster already used';
+      if (ignored) {
+        console.warn('[tipster ignored]', ignored, action);
+        fbPushState();
+        markProcessed();
+        return;
+      }
+      startPendingTipster(p.name);
+      fbPushState();
+      markProcessed();
+      return;
+    }
+    if (action.type === 'submitTipsterPick') {
+      const p = findPlayerByVoteName(action.playerName);
+      const picked = findPlayerByVoteName(action.pickedPlayerName);
+      let accepted = false;
+      if (p && picked) accepted = lockPendingTipsterPick(p.name, picked.name);
+      if (!accepted) console.warn('[tipster pick ignored]', action);
+      fbPushState();
+      markProcessed();
       return;
     }
     if (action.type === 'useJoker') {
+      if (isTipsterChoosing()) {
+        showToast(`${state.pendingTipster.playerName} gibt gerade den Tipp ab. Joker sind kurz gesperrt.`);
+        markProcessed();
+        return;
+      }
       if (action.jokerId === 'skip' && !shouldGiveFreeSkip()) {
         console.warn('[joker rejected]', 'skip outside random mode', action);
         showToast('Skip gibt es nur im Zufallsmodus.');
@@ -6668,6 +6836,7 @@ function resetMobileGameVoteStateForRound(sessionId, playerName, roundId, phase)
     '_mobileGameVotes',
     '_mobileGameVoteBans',
     '_mobileGameVoteMode',
+    '_mobileGameVoteUseMagnet',
     '_mobileGameVoteBanLimit',
     '_mobileGameVoteSubmitted'
   ].forEach(storeName => {
@@ -6766,14 +6935,17 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       const magnetLeft = ownsMagnet ? (voteUses.magnet ?? getModeJokerInitialUses('magnet')) : 0;
       const banLeft = ownsBan ? (voteUses.ban ?? getModeJokerInitialUses('ban')) : 0;
       window._mobileGameVoteBanLimit[voteKey] = banLeft;
-      const voteMode = window._mobileGameVoteMode[voteKey] || 'vote';
+      if (!window._mobileGameVoteUseMagnet) window._mobileGameVoteUseMagnet = {};
       const bannedIds = window._mobileGameVoteBans[voteKey] || [];
+      const useMagnet = !!window._mobileGameVoteUseMagnet[voteKey] && magnetLeft > 0;
       const selectedGameId = window._mobileGameVotes[voteKey] || '';
       const shownVoteCount = Math.max(votedPlayers.length, alreadySaved ? 1 : 0);
-      const ownFavoriteIsBanned = voteMode === 'ban' && !!selectedGameId && bannedIds.includes(selectedGameId);
-      const confirmEnabled = !alreadySaved && (voteMode === 'ban'
-        ? bannedIds.length > 0 && !!selectedGameId && !ownFavoriteIsBanned
-        : !!selectedGameId);
+      const ownFavoriteIsBanned = !!selectedGameId && bannedIds.includes(selectedGameId);
+      const confirmEnabled = !alreadySaved
+        && !!selectedGameId
+        && !ownFavoriteIsBanned
+        && bannedIds.length <= banLeft
+        && (!useMagnet || magnetLeft > 0);
       const gameButtonHtml = (g, selected, action, marker, blocked) => `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved || blocked ? '' : action}"
         style="position:relative;display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${(alreadySaved && !selected) || blocked ? .55 : 1}">
         ${marker ? `<div style="position:absolute;right:8px;top:8px;background:${marker.color};color:${marker.textColor || '#fff'};border-radius:999px;padding:3px 8px;font-size:.68rem;font-weight:900">${marker.label}</div>` : ''}
@@ -6785,27 +6957,17 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
           <div style="font-size:.75rem;color:#aaa">${smMobileEsc(TYPE_LABELS[g.type] || g.type || '')} - ${smMobileEsc(g.dur || '?')}min</div>
         </div>
       </button>`;
-      const normalOptionsHtml = options.length ? options.map(g => {
-        const selected = selectedGameId === g.id;
-        const marker = selected ? {label: voteMode === 'magnet' ? 'Favorit x3' : 'Favorit', color:'#4ecdc4', textColor:'#061313'} : null;
-        return gameButtonHtml(g, selected, `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, false);
-      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>';
       const banOptionsHtml = options.length ? options.map(g => {
         const selected = bannedIds.includes(g.id);
         const marker = selected ? {label:'Bann', color:'#e94560'} : null;
         return gameButtonHtml(g, selected, `smMobilePickGameBan('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, false);
       }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>';
-      const favoriteOptionsHtml = options.length ? options.map(g => {
-        const selected = selectedGameId === g.id;
-        const blocked = bannedIds.includes(g.id);
-        const marker = selected ? {label:'Favorit', color:'#4ecdc4', textColor:'#061313'} : blocked ? {label:'selbst gebannt', color:'#555'} : null;
-        return gameButtonHtml(g, selected, `smMobilePickGameFavorite('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, blocked);
-      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>';
       const confirmLabel = alreadySaved
         ? 'Auswahl gespeichert'
-        : voteMode === 'ban'
-          ? (!bannedIds.length ? 'Spiel zum Bannen auswählen' : !selectedGameId ? 'Favoriten auswählen' : ownFavoriteIsBanned ? 'Anderen Favoriten auswählen' : 'Bestätigen')
-          : selectedGameId ? 'Bestätigen' : 'Ein Spiel auswählen';
+        : !selectedGameId ? 'Favoriten auswählen'
+          : ownFavoriteIsBanned ? 'Anderen Favoriten auswählen'
+          : bannedIds.length > banLeft ? 'Zu viele Banns ausgewählt'
+          : 'Bestätigen';
       c.innerHTML = `
         <div style="background:#1a1a2e;border-radius:16px;padding:14px;margin-bottom:12px;border:2px solid ${alreadySaved?'#4ecdc4':'rgba(255,215,0,.25)'}">
           <div style="font-size:.7rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Spielauswahl</div>
@@ -6813,15 +6975,18 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
           ${alreadySaved?'<div style="margin-top:8px;color:#4ecdc4;font-weight:800">✅ Auswahl gespeichert · Warte auf andere Spieler</div>':''}
         </div>
         ${(!alreadySaved && (magnetLeft > 0 || banLeft > 0)) ? `<div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px">
-          ${magnetLeft > 0 ? `<button onclick="smMobileSetVoteMode('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${voteMode === 'magnet' ? 'vote' : 'magnet'}')" style="border:2px solid ${voteMode==='magnet'?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:${voteMode==='magnet'?'#2d2508':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🧲 Magnet-Joker <span style="color:#aaa;font-weight:700">(${magnetLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">Deine Spielwahl zählt dreifach.</div></button>` : ''}
-          ${banLeft > 0 ? `<button onclick="smMobileSetVoteMode('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${voteMode === 'ban' ? 'vote' : 'ban'}')" style="border:2px solid ${voteMode==='ban'?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:${voteMode==='ban'?'#2d2508':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🚫 Bann-Joker <span style="color:#aaa;font-weight:700">(${banLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">${voteMode==='ban' ? `Wähle bis zu ${banLeft} Spiele, die du verbannen möchtest.` : 'Bann-Modus aktivieren.'}</div></button>` : ''}
+          ${magnetLeft > 0 ? `<button onclick="smMobileToggleGameVoteMagnet('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="border:2px solid ${useMagnet?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:${useMagnet?'#2d2508':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🧲 Magnet-Joker <span style="color:#aaa;font-weight:700">(${magnetLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">${useMagnet ? 'Aktiv: Dein Favorit zählt dreifach.' : 'Optional auf deinen Favoriten anwenden.'}</div></button>` : ''}
+          ${banLeft > 0 ? `<div style="border:2px solid ${bannedIds.length?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:#1a1a2e;color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🚫 Bann-Joker <span style="color:#aaa;font-weight:700">(${banLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">Wähle bis zu ${banLeft} Spiele, die du bannen möchtest. Jeder Bann verbraucht einen Einsatz.</div></div>` : ''}
         </div>` : ''}
-        ${voteMode === 'ban' ? `<div style="font-size:.72rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">1. Spiel bannen</div><div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">${banOptionsHtml}</div>` : ''}
-        <div style="display:${voteMode === 'ban' ? 'none' : 'grid'};grid-template-columns:1fr;gap:10px;margin-bottom:14px">
+        ${banLeft > 0 ? `<div style="font-size:.72rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">1. Spiele bannen</div><div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">${banOptionsHtml}</div>` : ''}
+        <div style="font-size:.72rem;color:#4ecdc4;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">${banLeft > 0 ? '2.' : '1.'} Deinen Favoriten auswählen</div>
+        ${ownFavoriteIsBanned ? '<div style="background:#2a1010;border:1px solid #e94560;color:#ffb3bd;border-radius:10px;padding:10px;margin-bottom:10px;font-size:.82rem;font-weight:800">Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.</div>' : ''}
+        <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
           ${options.length ? options.map(g => {
-            const selected = voteMode === 'ban' ? bannedIds.includes(g.id) : selectedGameId === g.id;
+            const selected = selectedGameId === g.id;
             return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`}"
-              style="display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${alreadySaved && !selected ? .7 : 1}">
+              style="position:relative;display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${alreadySaved && !selected ? .7 : 1}">
+              ${selected ? `<div style="position:absolute;right:8px;top:8px;background:#4ecdc4;color:#061313;border-radius:999px;padding:3px 8px;font-size:.68rem;font-weight:900">${useMagnet ? 'Favorit x3' : 'Favorit'}</div>` : ''}
               <div onclick="smMobileOpenGameCoverOverlay('${smMobileEsc(g.id)}',event)" style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem;cursor:zoom-in">
                 ${renderCoverFallbackHtml(g, smMobileEsc)}
               </div>
@@ -6832,11 +6997,6 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
             </button>`;
           }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>'}
         </div>
-        ${voteMode === 'ban' ? `
-          <div style="font-size:.72rem;color:#4ecdc4;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">2. Dein Favorit</div>
-          ${ownFavoriteIsBanned ? '<div style="background:#2a1010;border:1px solid #e94560;color:#ffb3bd;border-radius:10px;padding:10px;margin-bottom:10px;font-size:.82rem;font-weight:800">Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.</div>' : ''}
-          <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">${favoriteOptionsHtml}</div>
-        ` : ''}
         <button id="mobile-game-vote-confirm" onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="width:100%;border:none;border-radius:12px;background:${confirmEnabled?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${confirmEnabled?'':'disabled'}>
           ${confirmLabel}
         </button>
@@ -6902,6 +7062,29 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
     const canUseJokers = !!data.marathonStarted && data.phase === 'marathon' && currentIdx >= 0;
     const canUseRevenge = canUseRevengeJoker(data);
+    const pendingTipster = data.pendingTipster || null;
+    if (pendingTipster?.status === 'choosing') {
+      const isTipster = normalizeVotePlayerName(pendingTipster.playerName) === normalizeVotePlayerName(playerName);
+      c.innerHTML = isTipster ? `
+        <div style="background:#1a1a2e;border-radius:16px;padding:16px;margin-bottom:12px;border:2px solid #ffd700;text-align:center">
+          <div style="font-size:3rem;line-height:1;margin-bottom:10px">🔮</div>
+          <div style="font-size:1.1rem;font-weight:900;color:#ffd700;margin-bottom:6px">Tipp-Joker</div>
+          <div style="font-size:.86rem;color:#aaa;line-height:1.45">Wähle genau einen erwarteten Gewinner. Dein Tipp bleibt bis zum Spielende geheim.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
+          ${players.map(p => `<button onclick="smMobileSelectTipsterPick('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(p.name)}')" data-tipster-pick="${smMobileEsc(p.name)}" style="border:2px solid rgba(255,255,255,.12);border-radius:12px;background:#1a1a2e;color:#e0e0e0;padding:13px;text-align:left;font-weight:900">${smMobileEsc(p.name)}</button>`).join('')}
+        </div>
+        <button id="mobile-tipster-confirm" onclick="smMobileSubmitTipsterPick('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}')" style="width:100%;border:none;border-radius:12px;background:#555;color:#fff;padding:14px;font-weight:900;font-size:1rem" disabled>Bestätigen</button>
+      ` : `
+        <div style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center">
+          <div style="width:100%;background:#1a1a2e;border:2px solid #ffd700;border-radius:18px;padding:26px 16px">
+            <div style="font-size:3rem;line-height:1;margin-bottom:12px">🔮</div>
+            <div style="font-size:1.15rem;font-weight:900;color:#ffd700">${smMobileEsc(pendingTipster.playerName)} gibt gerade seinen Tipp ab</div>
+            <div style="font-size:.86rem;color:#aaa;margin-top:8px;line-height:1.45">Joker sind kurz gesperrt. Danach geht es automatisch weiter.</div>
+          </div>
+        </div>`;
+      return;
+    }
 
     c.innerHTML = `
       ${curGame ? `<div style="background:#1a1a2e;border-radius:14px;padding:14px;margin-bottom:12px;border:1px solid rgba(255,215,0,.2)">
@@ -6929,8 +7112,9 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
           const jd = defs.find(x=>x.id===j.id)||{icon:'🃏',name:j.id,desc:''};
           const revengeBlocked = j.id === 'revenge' && !canUseRevenge;
           const modeOnlyBlocked = isSelectionOnlyJoker(j.id);
-          const canUseThisJoker = !j.used && j.id !== 'underdog' && canUseJokers && !revengeBlocked && !modeOnlyBlocked;
-          const blockedLabel = revengeBlocked ? 'Erst nach<br>dem ersten Spiel' : modeOnlyBlocked ? 'Nur in der<br>Spielauswahl' : 'Erst nach<br>Start';
+          const tipsterBlocked = j.id === 'tipster' && !!data.pendingTipster;
+          const canUseThisJoker = !j.used && j.id !== 'underdog' && canUseJokers && !revengeBlocked && !modeOnlyBlocked && !tipsterBlocked;
+          const blockedLabel = tipsterBlocked ? 'Tipp läuft<br>bereits' : revengeBlocked ? 'Erst nach<br>dem ersten Spiel' : modeOnlyBlocked ? 'Nur in der<br>Spielauswahl' : 'Erst nach<br>Start';
           return `<div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'};cursor:pointer">
             <span style="width:44px;height:58px;border-radius:8px;overflow:hidden;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;color:#111">${smJokerVisualHtml(jd,'1.6rem')}</span>
             <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.88rem">${smMobileEsc(jd.name)}</div><div style="font-size:.72rem;color:#888;margin-top:2px">${j.used?'✓ Bereits genutzt':smMobileEsc(jd.desc)}</div></div>
@@ -6999,6 +7183,49 @@ window.smMobileSubmitJokerPick = function smMobileSubmitJokerPick(sessionId, pla
   });
 };
 
+window.smMobileSelectTipsterPick = function smMobileSelectTipsterPick(sessionId, playerName, pickedPlayerName) {
+  const key = sessionId + '::tipster::' + normalizeVotePlayerName(playerName);
+  window._mobileTipsterPick = window._mobileTipsterPick || {};
+  window._mobileTipsterPick[key] = pickedPlayerName;
+  document.querySelectorAll('[data-tipster-pick]').forEach(btn => {
+    const selected = btn.getAttribute('data-tipster-pick') === pickedPlayerName;
+    btn.style.borderColor = selected ? '#ffd700' : 'rgba(255,255,255,.12)';
+    btn.style.background = selected ? 'linear-gradient(160deg,#2d2508,#1a1a2e)' : '#1a1a2e';
+  });
+  const confirm = document.getElementById('mobile-tipster-confirm');
+  if (confirm) {
+    confirm.disabled = false;
+    confirm.style.background = '#e94560';
+  }
+};
+
+window.smMobileSubmitTipsterPick = function smMobileSubmitTipsterPick(sessionId, playerName) {
+  const key = sessionId + '::tipster::' + normalizeVotePlayerName(playerName);
+  const pickedPlayerName = window._mobileTipsterPick?.[key];
+  if (!pickedPlayerName) return;
+  const confirm = document.getElementById('mobile-tipster-confirm');
+  if (confirm) {
+    confirm.disabled = true;
+    confirm.style.background = '#555';
+    confirm.textContent = 'Sende...';
+  }
+  firebase.database().ref(`sessions/${sessionId}/guestActions`).push({
+    type:'submitTipsterPick',
+    playerName,
+    pickedPlayerName,
+    ts:Date.now()
+  }).then(() => {
+    if (confirm) confirm.textContent = '✅ Tipp gespeichert';
+  }).catch(() => {
+    if (confirm) {
+      confirm.disabled = false;
+      confirm.style.background = '#e94560';
+      confirm.textContent = 'Erneut senden';
+    }
+    showToast('Tipp konnte nicht gesendet werden.');
+  });
+};
+
 window.smMobilePickGameVote = function smMobilePickGameVote(sessionId, playerName, voteId, gameId) {
   if (!window._mobileGameVotes) window._mobileGameVotes = {};
   if (!window._mobileGameVoteMode) window._mobileGameVoteMode = {};
@@ -7043,11 +7270,6 @@ window.smMobilePickGameVote = function smMobilePickGameVote(sessionId, playerNam
 
 window.smMobilePickGameVote = function smMobilePickGameVote(sessionId, playerName, voteId, gameId) {
   const key = getMobileVoteKey(sessionId, playerName, voteId);
-  const mode = window._mobileGameVoteMode?.[key] || 'vote';
-  if (mode === 'ban') {
-    window.smMobilePickGameBan(sessionId, playerName, voteId, gameId);
-    return;
-  }
   window.smMobilePickGameFavorite(sessionId, playerName, voteId, gameId);
 };
 
@@ -7074,11 +7296,18 @@ window.smMobilePickGameFavorite = function smMobilePickGameFavorite(sessionId, p
   if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
   const key = getMobileVoteKey(sessionId, playerName, voteId);
   const bans = window._mobileGameVoteBans[key] || [];
-  if ((window._mobileGameVoteMode?.[key] || 'vote') === 'ban' && bans.includes(gameId)) {
+  if (bans.includes(gameId)) {
     showToast('Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.');
     return;
   }
   window._mobileGameVotes[key] = gameId;
+  renderMobilePlayerView(sessionId, playerName);
+};
+
+window.smMobileToggleGameVoteMagnet = function smMobileToggleGameVoteMagnet(sessionId, playerName, voteId) {
+  if (!window._mobileGameVoteUseMagnet) window._mobileGameVoteUseMagnet = {};
+  const key = getMobileVoteKey(sessionId, playerName, voteId);
+  window._mobileGameVoteUseMagnet[key] = !window._mobileGameVoteUseMagnet[key];
   renderMobilePlayerView(sessionId, playerName);
 };
 
@@ -7099,11 +7328,11 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
   const gameId = window._mobileGameVotes?.[key];
   const playerKey = getGameVotePlayerKey(playerName);
   const voteRoundId = voteId;
-  const modeJoker = window._mobileGameVoteMode?.[key] === 'magnet' ? 'magnet' : window._mobileGameVoteMode?.[key] === 'ban' ? 'ban' : null;
-  const bannedGameIds = modeJoker === 'ban' ? [...(window._mobileGameVoteBans?.[key] || [])] : [];
-  if (modeJoker === 'ban' && !bannedGameIds.length) return;
+  const useMagnet = !!window._mobileGameVoteUseMagnet?.[key];
+  const bannedGameIds = [...(window._mobileGameVoteBans?.[key] || [])];
+  const modeJoker = useMagnet ? 'magnet' : (bannedGameIds.length ? 'ban' : null);
   if (!gameId) return;
-  if (modeJoker === 'ban' && bannedGameIds.includes(gameId)) {
+  if (bannedGameIds.includes(gameId)) {
     showToast('Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.');
     return;
   }
@@ -7123,9 +7352,14 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
     const currentRoundId = data?.currentVoteRoundId || data?.currentVoteId || null;
     if (!data || data.phase !== 'gameVote' || currentRoundId !== voteRoundId) throw new Error('Abstimmung ist nicht mehr aktiv.');
     const optionIds = new Set((data.currentVoteOptions || []).map(g => g.id));
-    const valid = modeJoker === 'ban'
-      ? optionIds.has(gameId) && bannedGameIds.length > 0 && bannedGameIds.every(id => optionIds.has(id)) && !bannedGameIds.includes(gameId)
-      : optionIds.has(gameId);
+    const playerUses = data.jokerUses?.[playerKey] || {};
+    const magnetLeft = playerUses.magnet ?? 0;
+    const banLeft = playerUses.ban ?? 0;
+    const valid = optionIds.has(gameId)
+      && bannedGameIds.every(id => optionIds.has(id))
+      && !bannedGameIds.includes(gameId)
+      && bannedGameIds.length <= banLeft
+      && (!useMagnet || magnetLeft > 0);
     if (!valid) throw new Error('Ungültige Spielauswahl.');
     return firebase.database().ref(`sessions/${sessionId}/guestActions`).push({
       type:'gameVote',
@@ -7135,6 +7369,7 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
       voteRoundId,
       gameId,
       modeJoker,
+      useMagnet,
       bannedGameIds,
       ts:Date.now()
     });
@@ -7534,7 +7769,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const records = Object.entries(state.currentGameVotes || {})
       .map(([playerKey, raw]) => getVoteRecord(playerKey, raw));
     const bansByGame = {};
-    records.filter(r => r.modeJoker === 'ban').forEach(r => {
+    records.filter(r => Array.isArray(r.bannedGameIds) && r.bannedGameIds.length).forEach(r => {
       r.bannedGameIds.forEach(gameId => {
         if (!bansByGame[gameId]) bansByGame[gameId] = [];
         bansByGame[gameId].push(r);
@@ -7575,7 +7810,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
         bannedBy: matchingBans.map(b => b.playerName).join(', '),
       };
       entries.push(base);
-      if (r.modeJoker === 'magnet') {
+      if (r.useMagnet || r.modeJoker === 'magnet') {
         entries.push({...base, voteKey:`${r.playerKey}-magnet-1`, jokerBadge:'🧲 Magnet-Joker'});
         entries.push({...base, voteKey:`${r.playerKey}-magnet-2`, jokerBadge:'🧲 Magnet-Joker'});
       }
@@ -7630,16 +7865,75 @@ document.addEventListener('sm-mobile-local-refresh', e => {
         <div style="display:inline-flex;align-items:center;gap:10px;background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:800;color:${allDone?'var(--green)':'var(--gold)'}">${voted} von ${total} haben gewählt</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">${waitingRows}</div>
-      ${allDone ? `<div style="margin-top:18px">
+      ${allDone && state._gameVoteRevealShown ? `<div style="margin-top:18px">
         <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Einzelstimmen, zufällig gemischt</div>
         <div id="mk-weighted-votes" class="mk-vote-stage">${voteCards}</div>
-      </div>` : ''}
+      </div>` : allDone ? '<div class="empty-state" style="margin-top:18px"><div class="icon">🃏</div><p>Alle Stimmen sind da. Joker werden gleich aufgedeckt.</p></div>' : ''}
     `;
     result.innerHTML = allDone
-      ? '<button class="btn btn-gold" style="width:100%;margin-top:12px" onclick="runMarioKartSelectionAnimation()">🏁 Zufallsauswahl starten</button>'
+      ? '<button class="btn btn-gold" style="width:100%;margin-top:12px" onclick="showGameVoteJokerRevealThenStart()">🏁 Zufallsauswahl starten</button>'
       : '<div class="empty-state"><div class="icon">📱</div><p>Warte auf Handy-Auswahlen</p></div>';
   }
   window.renderGameVoteHost = renderGameVoteHost;
+
+  function getGameVoteJokerRevealItems() {
+    return Object.entries(state.currentGameVotes || {})
+      .map(([playerKey, raw]) => getVoteRecord(playerKey, raw))
+      .flatMap(r => {
+        const player = findPlayerByVoteName(r.playerKey || r.playerName);
+        const color = getPlayerColorHex(player?.color);
+        const items = [];
+        if (r.useMagnet || r.modeJoker === 'magnet') {
+          items.push({emoji:'🧲', name:'Magnet-Joker', playerName:r.playerName, color, detail:'Favorit zählt dreifach'});
+        }
+        if ((r.bannedGameIds || []).length) {
+          items.push({emoji:'🚫', name:'Bann-Joker', playerName:r.playerName, color, detail:`${r.bannedGameIds.length} Spiel${r.bannedGameIds.length === 1 ? '' : 'e'} gebannt`});
+        }
+        return items;
+      });
+  }
+
+  function showGameVoteJokerRevealThenStart() {
+    if (!allGameVotesIn()) return;
+    if (state._gameVoteAnimating) return;
+    if (state._gameVoteRevealShown) {
+      window.runMarioKartSelectionAnimation();
+      return;
+    }
+    state._gameVoteRevealShown = true;
+    const items = getGameVoteJokerRevealItems();
+    if (!items.length) {
+      window.renderGameVoteHost();
+      window.runMarioKartSelectionAnimation();
+      return;
+    }
+    const info = document.getElementById('current-game-info');
+    const result = document.getElementById('result-input-area');
+    if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Roulette startet gleich...</p></div>';
+    if (info) {
+      info.innerHTML = `
+        <div style="min-height:320px;display:flex;align-items:center;justify-content:center;text-align:center">
+          <div style="width:100%;background:linear-gradient(160deg,#15152a,#211536);border:2px solid var(--gold);border-radius:20px;padding:28px 18px;box-shadow:0 24px 80px rgba(0,0,0,.45)">
+            <div style="font-size:.78rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Joker-Aufdeckung</div>
+            <div style="font-size:1.45rem;font-weight:1000;margin-bottom:18px">Diese Auswahl-Joker wurden eingesetzt</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+              ${items.map(item => `
+                <div style="border:2px solid ${item.color};border-radius:14px;padding:14px;background:rgba(255,255,255,.06);box-shadow:0 0 0 3px ${item.color}33">
+                  <div style="font-size:2.4rem;line-height:1">${item.emoji}</div>
+                  <div style="margin-top:8px;font-weight:1000;color:${item.color}">${esc(item.playerName)}</div>
+                  <div style="font-weight:900;margin-top:3px">${esc(item.name)}</div>
+                  <div style="font-size:.82rem;color:var(--muted);margin-top:5px">${esc(item.detail)}</div>
+                </div>`).join('')}
+            </div>
+          </div>
+        </div>`;
+    }
+    setTimeout(() => {
+      window.renderGameVoteHost();
+      window.runMarioKartSelectionAnimation();
+    }, 4200);
+  }
+  window.showGameVoteJokerRevealThenStart = showGameVoteJokerRevealThenStart;
 
   function runMarioKartSelectionAnimation() {
     if (!allGameVotesIn()) return;
@@ -7738,6 +8032,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     state.currentVoteId = null;
     state.currentVoteRoundId = null;
     state.currentVoteDisplayOrder = [];
+    state._gameVoteRevealShown = false;
     state._setupPhase = 'marathon';
     state._gameVoteAnimating = false;
     state.activeJokers = {};
