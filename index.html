@@ -746,7 +746,9 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
       <label>Siegbedingung</label>
       <select id="mg-win-condition">
         <option value="all">Alle spielen bis zum Ende</option>
-        <option value="first">Spiel endet, wenn einer gewonnen hat</option>
+        <option value="first">Spiel endet, wenn jemand gewonnen hat</option>
+        <option value="firstLoss">Spiel endet, wenn jemand verloren hat</option>
+        <option value="drawPileEmpty">Spiel endet, wenn der Ziehstapel aufgebraucht ist</option>
       </select>
     </div>
     <div class="form-group">
@@ -1593,6 +1595,19 @@ function getCategoryLimit(id) {
   return n > 0 ? n : null;
 }
 
+const WIN_CONDITION_LABELS = {
+  all: 'Alle spielen bis zum Ende',
+  first: 'Spiel endet, wenn jemand gewonnen hat',
+  firstLoss: 'Spiel endet, wenn jemand verloren hat',
+  drawPileEmpty: 'Spiel endet, wenn der Ziehstapel aufgebraucht ist'
+};
+function normalizeWinCondition(value) {
+  return WIN_CONDITION_LABELS[value] ? value : 'all';
+}
+function getWinConditionLabel(value) {
+  return WIN_CONDITION_LABELS[normalizeWinCondition(value)];
+}
+
 function applyCategoryLimits(games, existingPlanEntries = []) {
   const counts = {};
   existingPlanEntries.forEach(e => {
@@ -1668,7 +1683,7 @@ function openAddGameModal(editId = null) {
     document.getElementById('mg-max').value  = g.maxP || 4;
     document.getElementById('mg-type').value = g.type;
     document.getElementById('mg-coop-slots').value = g.coopSlots || 3;
-    document.getElementById('mg-win-condition').value = g.winCondition || 'all';
+    document.getElementById('mg-win-condition').value = normalizeWinCondition(g.winCondition);
     document.getElementById('mg-ties-allowed').checked = !!g.tiesAllowed;
     renderGameCategorySelect(getGameCategoryId(g));
     const savedCover = g.coverCropped || g.coverImg || '';
@@ -1778,7 +1793,7 @@ function saveGame() {
   const maxP = parseInt(document.getElementById('mg-max').value) || 4;
   const type = document.getElementById('mg-type').value;
   const coopSlots = type === 'coop' ? (parseInt(document.getElementById('mg-coop-slots').value) || 3) : 1;
-  const winCondition = document.getElementById('mg-win-condition').value;
+  const winCondition = normalizeWinCondition(document.getElementById('mg-win-condition').value);
   const tiesAllowed  = document.getElementById('mg-ties-allowed').checked;
   const categoryId = document.getElementById('mg-category')?.value || '';
   if (!name) { showToast('Bitte einen Spielnamen eingeben!'); return; }
@@ -1895,7 +1910,8 @@ function generateAndShowPlan() {
   c.innerHTML = shuffled.map((g, i) => {
     const typeColors = {ffa:'badge-ffa','2v2':'badge-2v2','3v1':'badge-3v1',coop:'badge-coop'};
     const icons = {ffa:'⚔️','2v2':'🤝','3v1':'👑',coop:'🤜'};
-    const winBadge = g.winCondition === 'first' ? '<span style="font-size:.65rem;background:rgba(233,69,96,.2);color:var(--accent);padding:1px 5px;border-radius:4px;margin-left:4px">1st wins</span>' : '';
+    const winCondition = normalizeWinCondition(g.winCondition);
+    const winBadge = winCondition !== 'all' ? '<span style="font-size:.65rem;background:rgba(233,69,96,.2);color:var(--accent);padding:1px 5px;border-radius:4px;margin-left:4px">' + esc(getWinConditionLabel(winCondition)) + '</span>' : '';
     const tieBadge = g.tiesAllowed ? '<span style="font-size:.65rem;background:rgba(78,205,196,.15);color:var(--green);padding:1px 5px;border-radius:4px;margin-left:4px">Ties ✓</span>' : '';
     return `<div class="game-item" style="grid-template-columns:40px 1fr auto">
       <div class="game-cover">${g.coverImg ? `<img src="${esc(g.coverImg)}" onerror="this.style.display='none'">` : (icons[g.type]||'🎲')}</div>
@@ -2314,7 +2330,7 @@ function renderJokerPickScreen() {
 
 function toggleJokerPick(playerName, jokerId) {
   if (isSelectionOnlyJoker(jokerId) && !isSelectionMode()) {
-    showToast('Dieser Joker ist nur im Auswahlmodus verfÃ¼gbar.');
+    showToast('Dieser Joker ist nur im Auswahlmodus verfügbar.');
     return;
   }
   if (jokerId === 'veto' && !canPickVetoJoker()) {
@@ -2994,6 +3010,10 @@ function renderCurrentGame() {
 function buildResultInput(g, entry) {
   const n = state.players.length;
   const tiesAllowed = !!g.tiesAllowed;
+  const winCondition = normalizeWinCondition(g.winCondition);
+  const winConditionNote = winCondition !== 'all'
+    ? `<div style="background:rgba(233,69,96,.1);border-radius:8px;padding:6px 10px;font-size:.78rem;color:var(--accent);margin-bottom:8px">⚡ ${esc(getWinConditionLabel(winCondition))} - Punkte wie gewohnt manuell vergeben</div>`
+    : '';
   if (g.type === 'ffa') {
     const doublePlayers = state.players.filter(p=>state.activeJokers[p.name]==='double');
     const doubleBanner = doublePlayers.length ? `
@@ -3007,7 +3027,7 @@ function buildResultInput(g, entry) {
     return `
       ${doubleBanner}
       <p style="font-size:.82rem;color:var(--muted);margin-bottom:6px">Wähle den Platz jedes Spielers:${tiesAllowed ? ' <span style="color:var(--green);font-size:.75rem">⚡ Gleiche Plätze erlaubt</span>' : ''}</p>
-      ${g.winCondition==='first' ? `<div style="background:rgba(233,69,96,.1);border-radius:8px;padding:6px 10px;font-size:.78rem;color:var(--accent);margin-bottom:8px">⚡ Spiel endet wenn einer gewinnt — restliche Plätze manuell vergeben</div>` : ''}
+      ${winConditionNote}
       <div class="points-grid">
         ${state.players.map(p => {
           const hasDouble = state.activeJokers[p.name] === 'double';
@@ -3026,6 +3046,7 @@ function buildResultInput(g, entry) {
   }
   if (g.type === '2v2') {
     return `
+      ${winConditionNote}
       <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">Welches Team hat gewonnen?</p>
       <div class="coop-result">
         <button class="btn btn-secondary" id="btn-2v2-a" onclick="select2v2('A')">🔴 Team Rot<small style="display:block;margin-top:4px">${(entry.teams?.teamA||[]).map(n=>esc(n)).join(', ')}</small></button>
@@ -3036,6 +3057,7 @@ function buildResultInput(g, entry) {
   }
   if (g.type === '3v1') {
     return `
+      ${winConditionNote}
       <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">Wer hat gewonnen?</p>
       <div class="coop-result">
         <button class="btn btn-secondary" id="btn-3v1-solo" onclick="select3v1('solo')">⚔️ Einer gewinnt<small style="display:block;margin-top:4px;color:var(--gold)">${esc(entry.teams?.solo||'')}</small></button>
@@ -3065,6 +3087,7 @@ function buildResultInput(g, entry) {
         </div>
       </div>`).join('');
     return `
+      ${winConditionNote}
       <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">Gemeinsames Ergebnis:</p>
       <div class="coop-result">
         <button class="btn btn-secondary" id="btn-coop-win" onclick="selectCoop('win')">🎉 Sieg!</button>
@@ -3640,6 +3663,27 @@ function openSaveAsTournament() {
 
 function openSaveModal() { openModal('modal-save'); }
 
+function finishTournamentAndReturnHome(snapshot, name) {
+  saveTournament({id: snapshot.id, name, date: snapshot.date,
+    players: snapshot.players, scores: snapshot.scores,
+    history: snapshot.history, skipped: snapshot.skipped || [], games: snapshot.games,
+    gameCategories: snapshot.gameCategories || [],
+    marathonMode: normalizeMarathonMode(snapshot.marathonMode)});
+
+  closeModal('modal-save');
+  resetMarathonRuntime({ disconnectFirebase: true, clearAutosave: true });
+  document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  showScreen('screen-home');
+  renderPlayerSetup();
+  renderPlanPreview();
+  syncMarathonModeInput();
+  renderSavedSessions();
+  renderTournamentList();
+  updateGameCountBadge();
+  if (typeof renderFbStatus === 'function') renderFbStatus();
+  showToast('🏆 Als Turnier gespeichert!');
+}
+
 function saveSession(finalize) {
   const name = document.getElementById('save-name').value.trim() ||
     `Marathon ${new Date().toLocaleDateString('de-DE')}`;
@@ -3648,21 +3692,13 @@ function saveSession(finalize) {
   const snapshot = buildSessionSnapshot(name, finalize);
   sessions[snapshot.id] = snapshot;
   setSessions(sessions);
-  closeModal('modal-save');
-  showToast(finalize ? '🏆 Als Turnier gespeichert!' : '💾 Session gespeichert!');
-  renderSavedSessions();
-
   if (finalize) {
-    saveTournament({id: snapshot.id, name, date: new Date().toISOString(),
-      players: state.players, scores: state.scores,
-      history: state.history, skipped: state.skipped||[], games: state.games,
-      marathonMode: normalizeMarathonMode(state.marathonMode)});
-    setTimeout(()=>{
-      resetMarathonRuntime({ disconnectFirebase: true });
-      showScreen('screen-home');
-      renderSavedSessions();
-    }, 500);
+    finishTournamentAndReturnHome(snapshot, name);
+    return;
   }
+  closeModal('modal-save');
+  showToast('💾 Session gespeichert!');
+  renderSavedSessions();
 }
 
 function getSessions() {
@@ -4610,7 +4646,16 @@ function deleteGameCategory(id) {
 }
 
 function exportGames() {
-  const data = JSON.stringify(state.games, null, 2);
+  normalizeGameCategories();
+  const data = JSON.stringify({
+    version: 2,
+    games: state.games || [],
+    categories: (state.gameCategories || []).map(c => ({
+      id: c.id,
+      name: c.name,
+      limit: c.limit === undefined ? '' : c.limit
+    }))
+  }, null, 2);
   const blob = new Blob([data], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -4630,13 +4675,44 @@ function importGamesFile(event) {
   reader.onload = e => {
     try {
       const imported = JSON.parse(e.target.result);
-      if (!Array.isArray(imported)) throw new Error('Kein Array');
+      const gamesToImport = Array.isArray(imported) ? imported : imported.games;
+      const categoriesToImport = Array.isArray(imported) ? [] : (imported.categories || []);
+      if (!Array.isArray(gamesToImport)) throw new Error('Keine Spiele gefunden');
       let added = 0;
-      imported.forEach(g => {
+      let categoriesAdded = 0;
+      const categoryIdMap = {};
+      normalizeGameCategories();
+      categoriesToImport.forEach(c => {
+        if (!c || !c.id || !c.name) return;
+        const sourceId = String(c.id);
+        const cleanName = String(c.name).trim();
+        if (!cleanName) return;
+        const existingById = state.gameCategories.find(x => x.id === sourceId);
+        const existingByName = state.gameCategories.find(x => x.name.toLowerCase() === cleanName.toLowerCase());
+        if (existingById && existingById.name.toLowerCase() === cleanName.toLowerCase()) {
+          categoryIdMap[sourceId] = existingById.id;
+          if ((existingById.limit === undefined || existingById.limit === '') && c.limit !== undefined) existingById.limit = c.limit;
+          return;
+        }
+        if (existingByName) {
+          categoryIdMap[sourceId] = existingByName.id;
+          if ((existingByName.limit === undefined || existingByName.limit === '') && c.limit !== undefined) existingByName.limit = c.limit;
+          return;
+        }
+        const targetId = existingById ? uid() : sourceId;
+        state.gameCategories.push({id:targetId, name:cleanName, limit:c.limit === undefined ? '' : c.limit});
+        categoryIdMap[sourceId] = targetId;
+        categoriesAdded++;
+      });
+      gamesToImport.forEach(g => {
         if (!g.name || !g.id) return;
         // Skip duplicates by id
         if (!state.games.find(x=>x.id===g.id)) {
-          state.games.push(g);
+          const game = {...g};
+          const sourceCategoryId = game.categoryId || game.seriesId || '';
+          if (sourceCategoryId) game.categoryId = categoryIdMap[sourceCategoryId] || sourceCategoryId;
+          game.winCondition = normalizeWinCondition(game.winCondition);
+          state.games.push(game);
           added++;
         }
       });
@@ -4644,7 +4720,7 @@ function importGamesFile(event) {
       saveLS();
       updateGameCountBadge();
       openGameLibraryModal();
-      showToast(added + ' Spiele importiert ✓');
+      showToast(added + ' Spiele und ' + categoriesAdded + ' Oberkategorien importiert ✓');
     } catch(err) {
       showToast('Fehler beim Importieren: ' + err.message);
     }
@@ -5802,8 +5878,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
-      // Never close goal handover, secret goal, or veto modals by clicking outside
-      const blocked = ['modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick','modal-all-games-banned'];
+      // Never close protected workflow modals by clicking outside.
+      const blocked = ['modal-add-game','modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick','modal-all-games-banned'];
       if (blocked.includes(overlay.id)) return;
       if (e.target===overlay) overlay.classList.remove('open');
     });
@@ -6203,13 +6279,48 @@ window.smMobileOpenJokerOverlay = function smMobileOpenJokerOverlay(jokerId, eve
         <div style="font-size:1.15rem;font-weight:900;color:#ffd700;margin-bottom:6px">${smMobileEsc(jd.name)}</div>
         <div style="font-size:.9rem;line-height:1.55;color:#c8c8d8">${smMobileEsc(jd.desc)}</div>
       </div>
-      <button onclick="smMobileCloseJokerOverlay()" style="width:100%;border:none;border-radius:12px;background:#2a2a42;color:#e0e0e0;padding:13px;font-weight:900;font-size:.95rem;margin-top:12px">Schliessen</button>
+      <button onclick="smMobileCloseJokerOverlay()" style="width:100%;border:none;border-radius:12px;background:#2a2a42;color:#e0e0e0;padding:13px;font-weight:900;font-size:.95rem;margin-top:12px">Schließen</button>
     </div>`;
   overlay.style.display = 'flex';
 };
 
 window.smMobileCloseJokerOverlay = function smMobileCloseJokerOverlay() {
   const overlay = document.getElementById('mobile-joker-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.innerHTML = '';
+  }
+};
+
+window.smMobileOpenGameCoverOverlay = function smMobileOpenGameCoverOverlay(gameId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const games = window._smMobileCurrentVoteOptions || [];
+  const g = games.find(x => x.id === gameId);
+  if (!g) return;
+  const overlay = document.getElementById('mobile-cover-overlay');
+  if (!overlay) return;
+  const cover = g.coverImg || g.coverCropped || '';
+  const visual = cover
+    ? `<img src="${smMobileEsc(cover)}" alt="${smMobileEsc(g.name || 'Spiel')}" style="display:block;width:100%;height:100%;object-fit:contain" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:min(34vw,9rem)">🎲</div>`
+    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:min(34vw,9rem)">🎲</div>`;
+  overlay.innerHTML = `
+    <div onclick="event.stopPropagation()" style="width:min(94vw,520px);max-height:92vh;overflow:auto;background:#111124;border:1px solid rgba(255,255,255,.14);border-radius:18px;box-shadow:0 18px 60px rgba(0,0,0,.65);padding:14px">
+      <div style="background:#050507;border-radius:14px;min-height:58vh;max-height:68vh;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#fff">
+        ${visual}
+      </div>
+      <div style="padding:14px 4px 4px;text-align:center">
+        <div style="font-size:1.15rem;font-weight:900;color:#ffd700">${smMobileEsc(g.name || 'Spiel')}</div>
+      </div>
+      <button onclick="smMobileCloseGameCoverOverlay()" style="width:100%;border:none;border-radius:12px;background:#2a2a42;color:#e0e0e0;padding:13px;font-weight:900;font-size:.95rem;margin-top:12px">Schließen</button>
+    </div>`;
+  overlay.style.display = 'flex';
+};
+
+window.smMobileCloseGameCoverOverlay = function smMobileCloseGameCoverOverlay() {
+  const overlay = document.getElementById('mobile-cover-overlay');
   if (overlay) {
     overlay.style.display = 'none';
     overlay.innerHTML = '';
@@ -6589,6 +6700,9 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
   if (!document.getElementById('mobile-joker-overlay')) {
     document.body.insertAdjacentHTML('beforeend', `<div id="mobile-joker-overlay" onclick="smMobileCloseJokerOverlay()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.86);align-items:center;justify-content:center;padding:14px"></div>`);
   }
+  if (!document.getElementById('mobile-cover-overlay')) {
+    document.body.insertAdjacentHTML('beforeend', `<div id="mobile-cover-overlay" onclick="smMobileCloseGameCoverOverlay()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.9);align-items:center;justify-content:center;padding:14px"></div>`);
+  }
 
   if (window._mobilePlayerViewRef && window._mobilePlayerViewListener) {
     window._mobilePlayerViewRef.off('value', window._mobilePlayerViewListener);
@@ -6634,6 +6748,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
 
     if (data.phase === 'gameVote') {
       const options = data.currentVoteOptions || [];
+      window._smMobileCurrentVoteOptions = options;
       const votedPlayers = data.gameVoteVotedPlayers || [];
       const currentVoteRoundId = data.currentVoteRoundId || data.currentVoteId || '';
       if (!window._mobileGameVotes) window._mobileGameVotes = {};
@@ -6662,7 +6777,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       const gameButtonHtml = (g, selected, action, marker, blocked) => `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved || blocked ? '' : action}"
         style="position:relative;display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${(alreadySaved && !selected) || blocked ? .55 : 1}">
         ${marker ? `<div style="position:absolute;right:8px;top:8px;background:${marker.color};color:${marker.textColor || '#fff'};border-radius:999px;padding:3px 8px;font-size:.68rem;font-weight:900">${marker.label}</div>` : ''}
-        <div style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem">
+        <div onclick="smMobileOpenGameCoverOverlay('${smMobileEsc(g.id)}',event)" style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem;cursor:zoom-in">
           ${renderCoverFallbackHtml(g, smMobileEsc)}
         </div>
         <div>
@@ -6674,23 +6789,23 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         const selected = selectedGameId === g.id;
         const marker = selected ? {label: voteMode === 'magnet' ? 'Favorit x3' : 'Favorit', color:'#4ecdc4', textColor:'#061313'} : null;
         return gameButtonHtml(g, selected, `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, false);
-      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfuegbar.</div>';
+      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>';
       const banOptionsHtml = options.length ? options.map(g => {
         const selected = bannedIds.includes(g.id);
         const marker = selected ? {label:'Bann', color:'#e94560'} : null;
         return gameButtonHtml(g, selected, `smMobilePickGameBan('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, false);
-      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfuegbar.</div>';
+      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>';
       const favoriteOptionsHtml = options.length ? options.map(g => {
         const selected = selectedGameId === g.id;
         const blocked = bannedIds.includes(g.id);
         const marker = selected ? {label:'Favorit', color:'#4ecdc4', textColor:'#061313'} : blocked ? {label:'selbst gebannt', color:'#555'} : null;
         return gameButtonHtml(g, selected, `smMobilePickGameFavorite('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, blocked);
-      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfuegbar.</div>';
+      }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>';
       const confirmLabel = alreadySaved
         ? 'Auswahl gespeichert'
         : voteMode === 'ban'
-          ? (!bannedIds.length ? 'Spiel zum Bannen auswaehlen' : !selectedGameId ? 'Favoriten auswaehlen' : ownFavoriteIsBanned ? 'Anderen Favoriten auswaehlen' : 'Bestaetigen')
-          : selectedGameId ? 'Bestaetigen' : 'Ein Spiel auswaehlen';
+          ? (!bannedIds.length ? 'Spiel zum Bannen auswählen' : !selectedGameId ? 'Favoriten auswählen' : ownFavoriteIsBanned ? 'Anderen Favoriten auswählen' : 'Bestätigen')
+          : selectedGameId ? 'Bestätigen' : 'Ein Spiel auswählen';
       c.innerHTML = `
         <div style="background:#1a1a2e;border-radius:16px;padding:14px;margin-bottom:12px;border:2px solid ${alreadySaved?'#4ecdc4':'rgba(255,215,0,.25)'}">
           <div style="font-size:.7rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Spielauswahl</div>
@@ -6707,7 +6822,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
             const selected = voteMode === 'ban' ? bannedIds.includes(g.id) : selectedGameId === g.id;
             return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`}"
               style="display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${alreadySaved && !selected ? .7 : 1}">
-              <div style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem">
+              <div onclick="smMobileOpenGameCoverOverlay('${smMobileEsc(g.id)}',event)" style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem;cursor:zoom-in">
                 ${renderCoverFallbackHtml(g, smMobileEsc)}
               </div>
               <div>
@@ -6719,7 +6834,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         </div>
         ${voteMode === 'ban' ? `
           <div style="font-size:.72rem;color:#4ecdc4;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">2. Dein Favorit</div>
-          ${ownFavoriteIsBanned ? '<div style="background:#2a1010;border:1px solid #e94560;color:#ffb3bd;border-radius:10px;padding:10px;margin-bottom:10px;font-size:.82rem;font-weight:800">Du kannst nicht fuer ein Spiel stimmen, das du selbst gebannt hast.</div>' : ''}
+          ${ownFavoriteIsBanned ? '<div style="background:#2a1010;border:1px solid #e94560;color:#ffb3bd;border-radius:10px;padding:10px;margin-bottom:10px;font-size:.82rem;font-weight:800">Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.</div>' : ''}
           <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">${favoriteOptionsHtml}</div>
         ` : ''}
         <button id="mobile-game-vote-confirm" onclick="smMobileSubmitGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="width:100%;border:none;border-radius:12px;background:${confirmEnabled?'#e94560':'#555'};color:#fff;padding:14px;font-weight:900;font-size:1rem" ${confirmEnabled?'':'disabled'}>
@@ -6839,7 +6954,7 @@ window.smMobileToggleJoker = function smMobileToggleJoker(sessionId, playerName,
     const data = snap.val();
     if (!data) return;
     if (isSelectionOnlyJoker(jokerId) && !isSelectionMode(data)) {
-      showToast('Dieser Joker ist nur im Auswahlmodus verfÃ¼gbar.');
+      showToast('Dieser Joker ist nur im Auswahlmodus verfügbar.');
       return;
     }
     if (jokerId === 'veto' && !canPickVetoJoker(data)) {
@@ -6870,7 +6985,7 @@ window.smMobileSubmitJokerPick = function smMobileSubmitJokerPick(sessionId, pla
     const data = snap.val();
     if (!data) return;
     if (!isSelectionMode(data) && picks.some(id => isSelectionOnlyJoker(id))) {
-      showToast('Magnet und Bann sind nur im Auswahlmodus verfÃ¼gbar.');
+      showToast('Magnet und Bann sind nur im Auswahlmodus verfügbar.');
       return;
     }
     if (picks.includes('veto') && !canPickVetoJoker(data)) {
@@ -6949,7 +7064,7 @@ window.smMobilePickGameBan = function smMobilePickGameBan(sessionId, playerName,
     bans.push(gameId);
   }
   if (bans.includes(window._mobileGameVotes[key])) {
-    showToast('Du kannst nicht fuer ein Spiel stimmen, das du selbst gebannt hast.');
+    showToast('Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.');
   }
   renderMobilePlayerView(sessionId, playerName);
 };
@@ -6960,7 +7075,7 @@ window.smMobilePickGameFavorite = function smMobilePickGameFavorite(sessionId, p
   const key = getMobileVoteKey(sessionId, playerName, voteId);
   const bans = window._mobileGameVoteBans[key] || [];
   if ((window._mobileGameVoteMode?.[key] || 'vote') === 'ban' && bans.includes(gameId)) {
-    showToast('Du kannst nicht fuer ein Spiel stimmen, das du selbst gebannt hast.');
+    showToast('Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.');
     return;
   }
   window._mobileGameVotes[key] = gameId;
@@ -6989,7 +7104,7 @@ window.smMobileSubmitGameVote = function smMobileSubmitGameVote(sessionId, playe
   if (modeJoker === 'ban' && !bannedGameIds.length) return;
   if (!gameId) return;
   if (modeJoker === 'ban' && bannedGameIds.includes(gameId)) {
-    showToast('Du kannst nicht fuer ein Spiel stimmen, das du selbst gebannt hast.');
+    showToast('Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.');
     return;
   }
   console.log('[gameVote send]', voteRoundId, playerKey, gameId);
