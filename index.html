@@ -1178,6 +1178,13 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
         <span class="toggle-slider"></span>
       </label>
     </div>
+    <details style="margin-top:18px;background:var(--surface);border-radius:10px;padding:10px 12px;border:1px solid rgba(255,255,255,.08)">
+      <summary style="cursor:pointer;color:var(--muted);font-size:.82rem;font-weight:700">Entwickler / Testdaten</summary>
+      <div style="margin-top:12px;font-size:.78rem;color:var(--muted);line-height:1.5">
+        Setzt nur die marathonübergreifenden Spielstatistiken zurück. Spiele, Oberkategorien, Sessions, Turniere, Jokerbilder und Einstellungen bleiben erhalten.
+      </div>
+      <button class="btn btn-danger btn-sm" style="margin-top:10px" onclick="resetGlobalGameStatsWithConfirmation()">Globale Spielstatistiken zurücksetzen</button>
+    </details>
   </div>
 
 </div>
@@ -1201,6 +1208,7 @@ const JOKER_DEFS = [
 ];
 // Skip is always added separately (not selectable, always given)
 const SKIP_JOKER = {id:'skip', icon:'⏭️', name:'Skip!', desc:'Magst du das aktuelle Spiel nicht? Wirf es raus – ein neues Spiel kommt stattdessen rein!', img:''};
+const GLOBAL_GAME_STATS_KEY = 'sm_global_game_stats_v1';
 
 const PLAYER_COLORS = ['p0','p1','p2','p3','p4','p5','p6','p7','p8','p9',
   'p0','p1','p2','p3','p4','p5','p6','p7','p8','p9'];
@@ -1811,6 +1819,7 @@ function saveGame() {
     state.games.push({id: uid(), name, dev, dur, minDur, type, rules:[...modalRules], minP, maxP, coverImg: coverDataUrl, coverOriginal: coverOriginalDataUrl || coverDataUrl, coopSlots, winCondition, tiesAllowed, categoryId});
   }
   closeModal('modal-add-game');
+  syncGlobalGameStatNames();
   renderGameListSetup();
   updateGameCountBadge();
   saveLS();
@@ -1906,6 +1915,7 @@ function generateAndShowPlan() {
     return;
   }
   const shuffled = applyCategoryLimits(shuffle(compatible));
+  trackRandomPlanStats('randomPlan-' + Date.now() + '-' + uid(), shuffled);
   // Save this order so marathon uses the same sequence
   state.previewOrder = shuffled.map(g => g.id);
 
@@ -2553,6 +2563,7 @@ function startGameVoteRound() {
   state.currentVoteWinner = null;
   state.currentVoteId = createUniqueGameVoteRoundId();
   state.currentVoteRoundId = state.currentVoteId;
+  trackSelectionShownStats(state.currentVoteRoundId, options);
   state._lastVoteRoundId = state.currentVoteRoundId;
   state.voteResetUntil = null;
   state.currentVoteDisplayOrder = [];
@@ -2700,6 +2711,177 @@ function ensureJokerUsesForPlayer(playerName) {
 
 function playerOwnsJoker(playerName, jokerId) {
   return (state.jokers?.[playerName] || []).some(j => j.id === jokerId);
+}
+
+function emptyGlobalGameStats() {
+  return {
+    version: 1,
+    games: {},
+    counted: {
+      selectionShown: {},
+      votes: {},
+      rouletteWins: {},
+      playedResults: {},
+      randomPlans: {}
+    }
+  };
+}
+
+function getGlobalGameStats() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(GLOBAL_GAME_STATS_KEY) || 'null');
+    const data = parsed && typeof parsed === 'object' ? parsed : emptyGlobalGameStats();
+    data.version = data.version || 1;
+    data.games = data.games && typeof data.games === 'object' ? data.games : {};
+    data.counted = data.counted && typeof data.counted === 'object' ? data.counted : {};
+    ['selectionShown','votes','rouletteWins','playedResults','randomPlans'].forEach(k => {
+      if (!data.counted[k] || typeof data.counted[k] !== 'object') data.counted[k] = {};
+    });
+    return data;
+  } catch {
+    return emptyGlobalGameStats();
+  }
+}
+
+function setGlobalGameStats(data) {
+  try { localStorage.setItem(GLOBAL_GAME_STATS_KEY, JSON.stringify(data)); } catch {}
+}
+
+function getGlobalGameStatEntry(data, gameId, gameName = '') {
+  if (!gameId) return null;
+  if (!data.games[gameId]) {
+    data.games[gameId] = {
+      gameName: gameName || 'Gelöschtes Spiel',
+      selectionShownCount: 0,
+      normalVoteCount: 0,
+      magnetVoteCount: 0,
+      banTargetCount: 0,
+      rouletteWinCount: 0,
+      playedCount: 0,
+      randomPlanCount: 0,
+      lastPlayedAt: null,
+      lastSelectedAt: null
+    };
+  }
+  if (gameName) data.games[gameId].gameName = gameName;
+  return data.games[gameId];
+}
+
+function getGameForStats(gameId) {
+  return state.games.find(g => g.id === gameId) || null;
+}
+
+function incrementGlobalGameStat(gameId, field, amount = 1, options = {}) {
+  const game = getGameForStats(gameId);
+  const data = getGlobalGameStats();
+  const entry = getGlobalGameStatEntry(data, gameId, game?.name || options.gameName || '');
+  if (!entry) return;
+  entry[field] = (parseInt(entry[field], 10) || 0) + amount;
+  if (options.lastSelectedAt) entry.lastSelectedAt = options.lastSelectedAt;
+  if (options.lastPlayedAt) entry.lastPlayedAt = options.lastPlayedAt;
+  setGlobalGameStats(data);
+}
+
+function countGlobalStatOnce(bucket, key, callback) {
+  if (!key) return false;
+  const data = getGlobalGameStats();
+  if (!data.counted[bucket]) data.counted[bucket] = {};
+  if (data.counted[bucket][key]) return false;
+  callback(data);
+  data.counted[bucket][key] = Date.now();
+  setGlobalGameStats(data);
+  return true;
+}
+
+function trackSelectionShownStats(voteRoundId, options) {
+  if (!voteRoundId || !Array.isArray(options)) return;
+  countGlobalStatOnce('selectionShown', voteRoundId, data => {
+    options.forEach(g => {
+      const entry = getGlobalGameStatEntry(data, g.id, g.name);
+      if (entry) entry.selectionShownCount = (entry.selectionShownCount || 0) + 1;
+    });
+  });
+}
+
+function trackAcceptedGameVoteStats(voteRoundId, playerKey, voteRecord) {
+  const key = voteRoundId + '::' + playerKey;
+  countGlobalStatOnce('votes', key, data => {
+    const game = getGameForStats(voteRecord.gameId);
+    const voted = getGlobalGameStatEntry(data, voteRecord.gameId, game?.name || voteRecord.gameName || '');
+    if (voted) {
+      voted.normalVoteCount = (voted.normalVoteCount || 0) + 1;
+      voted.lastSelectedAt = new Date().toISOString();
+      if (voteRecord.useMagnet || voteRecord.modeJoker === 'magnet') voted.magnetVoteCount = (voted.magnetVoteCount || 0) + 1;
+    }
+    (voteRecord.bannedGameIds || []).forEach(gameId => {
+      const bannedGame = getGameForStats(gameId);
+      const banned = getGlobalGameStatEntry(data, gameId, bannedGame?.name || '');
+      if (banned) banned.banTargetCount = (banned.banTargetCount || 0) + 1;
+    });
+  });
+}
+
+function trackRouletteWinStats(voteRoundId, gameId) {
+  const key = voteRoundId + '::' + gameId;
+  countGlobalStatOnce('rouletteWins', key, data => {
+    const game = getGameForStats(gameId);
+    const entry = getGlobalGameStatEntry(data, gameId, game?.name || '');
+    if (entry) {
+      entry.rouletteWinCount = (entry.rouletteWinCount || 0) + 1;
+      entry.lastSelectedAt = new Date().toISOString();
+    }
+  });
+}
+
+function trackPlayedGameStats(entry, game) {
+  if (!entry || !game) return;
+  if (!entry.resultStatId) entry.resultStatId = uid();
+  countGlobalStatOnce('playedResults', entry.resultStatId, data => {
+    const stat = getGlobalGameStatEntry(data, game.id, game.name);
+    if (stat) {
+      stat.playedCount = (stat.playedCount || 0) + 1;
+      stat.lastPlayedAt = new Date().toISOString();
+    }
+  });
+}
+
+function trackRandomPlanStats(planId, games) {
+  if (!planId || !Array.isArray(games)) return;
+  countGlobalStatOnce('randomPlans', planId, data => {
+    games.forEach(g => {
+      const entry = getGlobalGameStatEntry(data, g.id, g.name);
+      if (entry) entry.randomPlanCount = (entry.randomPlanCount || 0) + 1;
+    });
+  });
+}
+
+function syncGlobalGameStatNames() {
+  const data = getGlobalGameStats();
+  (state.games || []).forEach(g => getGlobalGameStatEntry(data, g.id, g.name));
+  setGlobalGameStats(data);
+}
+
+function mergeGlobalGameStats(importedStats) {
+  if (!importedStats || typeof importedStats !== 'object') return 0;
+  const incomingGames = importedStats.games && typeof importedStats.games === 'object'
+    ? importedStats.games
+    : importedStats;
+  if (!incomingGames || typeof incomingGames !== 'object') return 0;
+  const data = getGlobalGameStats();
+  let merged = 0;
+  Object.entries(incomingGames).forEach(([gameId, stat]) => {
+    if (!stat || typeof stat !== 'object') return;
+    const entry = getGlobalGameStatEntry(data, gameId, stat.gameName || '');
+    if (!entry) return;
+    ['selectionShownCount','normalVoteCount','magnetVoteCount','banTargetCount','rouletteWinCount','playedCount','randomPlanCount'].forEach(field => {
+      entry[field] = Math.max(parseInt(entry[field], 10) || 0, parseInt(stat[field], 10) || 0);
+    });
+    if (stat.lastPlayedAt && (!entry.lastPlayedAt || new Date(stat.lastPlayedAt) > new Date(entry.lastPlayedAt))) entry.lastPlayedAt = stat.lastPlayedAt;
+    if (stat.lastSelectedAt && (!entry.lastSelectedAt || new Date(stat.lastSelectedAt) > new Date(entry.lastSelectedAt))) entry.lastSelectedAt = stat.lastSelectedAt;
+    merged++;
+  });
+  setGlobalGameStats(data);
+  return merged;
 }
 
 function isTipsterChoosing(source = state) {
@@ -2974,6 +3156,8 @@ function finishMarioKartSelection(gameId) {
   const g = state.games.find(x => x.id === gameId);
   if (!g) { showToast('Ausgewähltes Spiel nicht gefunden.'); return; }
   console.log('[gameVote finish]', state.currentGameVotes, g);
+  const voteRoundId = state.currentVoteRoundId || state.currentVoteId || 'legacy-' + Date.now();
+  trackRouletteWinStats(voteRoundId, gameId);
   state.currentVoteWinner = gameId;
   state.plan.push({
     gameId: g.id,
@@ -3346,6 +3530,7 @@ function submitResult(type) {
     gameName: g.name, type: g.type, pts: {...pointsMap}, special: specialW,
     isRevanche: !!(entry.isRevanche),
   });
+  trackPlayedGameStats(entry, g);
   entry.done = true;
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
   // Clear result input area immediately so old selections don't show
@@ -4232,6 +4417,24 @@ function showToast(msg) {
   setTimeout(()=>t.classList.remove('show'), 2800);
 }
 
+function resetGlobalGameStatsWithConfirmation() {
+  showConfirm(
+    'Globale Spielstatistiken zurücksetzen?',
+    'Alle marathonübergreifenden Spielstatistiken werden dauerhaft gelöscht. Spiele, Kategorien und Turniere bleiben erhalten.',
+    () => {
+      const typed = prompt('Bitte RESET eingeben, um die globalen Spielstatistiken dauerhaft zu löschen.');
+      if (typed !== 'RESET') {
+        showToast('Reset abgebrochen.');
+        return;
+      }
+      setGlobalGameStats(emptyGlobalGameStats());
+      if (gameLibraryActiveTab === 'stats') openGameLibraryModal('stats');
+      showToast('Globale Spielstatistiken zurückgesetzt.');
+    },
+    'Weiter'
+  );
+}
+
 // ═══════════════════════════════════════════════════════════
 //  RENDER ALL
 // ═══════════════════════════════════════════════════════════
@@ -4306,6 +4509,7 @@ function loadLS() {
     const ce = localStorage.getItem('sm_custom_events');
     if (ce) state.customEvents = JSON.parse(ce);
     normalizeGameCategories();
+    syncGlobalGameStatNames();
   } catch {}
 }
 
@@ -4394,6 +4598,8 @@ let gameLibraryActiveTab = 'games';
 let gameLibrarySearchQuery = '';
 let selectedGameLibraryIds = new Set();
 let expandedGameCategories = new Set();
+let globalStatsSortMode = 'played';
+let globalStatsSearchQuery = '';
 let editingGameCategoryId = null;
 
 function gameMatchesLibrarySearch(g, query) {
@@ -4542,10 +4748,16 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games', focusSearch
   const tabs = '<div class="library-tabs">'
     + '<button class="library-tab ' + (tab === 'games' ? 'active' : '') + '" onclick="openGameLibraryModal(\'games\')">Spiele</button>'
     + '<button class="library-tab ' + (tab === 'categories' ? 'active' : '') + '" onclick="openGameLibraryModal(\'categories\')">Oberkategorien</button>'
+    + '<button class="library-tab ' + (tab === 'stats' ? 'active' : '') + '" onclick="openGameLibraryModal(\'stats\')">Globale Statistiken</button>'
     + '</div>';
 
   if (tab === 'categories') {
     renderCategoryLibrary(c, tabs);
+    openModal('modal-game-library');
+    return;
+  }
+  if (tab === 'stats') {
+    renderGlobalGameStatsLibrary(c, tabs);
     openModal('modal-game-library');
     return;
   }
@@ -4599,7 +4811,7 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games', focusSearch
   if (c) c.scrollTop = previousScrollTop;
   setTimeout(() => {
     if (!focusSearch) return;
-    const search = document.getElementById('game-library-search');
+    const search = document.getElementById(tab === 'stats' ? 'global-stats-search' : 'game-library-search');
     if (!search) return;
     search.focus();
     const pos = search.value.length;
@@ -4696,6 +4908,82 @@ function renderCategoryLibrary(c, tabs) {
       : '<div class="empty-state"><div class="icon">📁</div><p>Noch keine Oberkategorien</p></div>');
 }
 
+function getGlobalStatsRows() {
+  syncGlobalGameStatNames();
+  const data = getGlobalGameStats();
+  return Object.entries(data.games || {}).map(([gameId, stat]) => {
+    const game = state.games.find(g => g.id === gameId);
+    return {
+      gameId,
+      game,
+      gameName: game?.name || stat.gameName || 'Gelöschtes Spiel',
+      coverImg: game?.coverImg || '',
+      selectionShownCount: parseInt(stat.selectionShownCount, 10) || 0,
+      normalVoteCount: parseInt(stat.normalVoteCount, 10) || 0,
+      magnetVoteCount: parseInt(stat.magnetVoteCount, 10) || 0,
+      banTargetCount: parseInt(stat.banTargetCount, 10) || 0,
+      rouletteWinCount: parseInt(stat.rouletteWinCount, 10) || 0,
+      playedCount: parseInt(stat.playedCount, 10) || 0,
+      randomPlanCount: parseInt(stat.randomPlanCount, 10) || 0
+    };
+  });
+}
+
+function sortGlobalStatsRows(rows) {
+  const sortMap = {played:'playedCount', voted:'normalVoteCount', magnet:'magnetVoteCount', banned:'banTargetCount', roulette:'rouletteWinCount', shown:'selectionShownCount'};
+  const field = sortMap[globalStatsSortMode] || 'playedCount';
+  return rows.sort((a,b) => (b[field] - a[field]) || a.gameName.localeCompare(b.gameName, 'de'));
+}
+
+function renderGlobalGameStatsLibrary(c, tabs) {
+  const query = String(globalStatsSearchQuery || '').trim().toLowerCase();
+  const rows = sortGlobalStatsRows(getGlobalStatsRows().filter(row => !query || row.gameName.toLowerCase().includes(query)));
+  const controls = '<div class="game-library-searchbar">'
+    + '<div class="game-library-search"><label for="global-stats-search" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Statistiken suchen</label>'
+    + '<div class="game-search-wrap"><span class="game-search-icon" aria-hidden="true">🔎</span><input type="text" id="global-stats-search" placeholder="Spielname" value="' + esc(globalStatsSearchQuery) + '" oninput="onGlobalStatsSearch(this.value)"/></div></div>'
+    + '<div style="min-width:220px"><label for="global-stats-sort" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Sortieren</label>'
+    + '<select id="global-stats-sort" onchange="setGlobalStatsSort(this.value)">'
+    + '<option value="played" ' + (globalStatsSortMode==='played'?'selected':'') + '>am häufigsten gespielt</option>'
+    + '<option value="voted" ' + (globalStatsSortMode==='voted'?'selected':'') + '>am häufigsten gewählt</option>'
+    + '<option value="magnet" ' + (globalStatsSortMode==='magnet'?'selected':'') + '>am häufigsten mit Magnet unterstützt</option>'
+    + '<option value="banned" ' + (globalStatsSortMode==='banned'?'selected':'') + '>am häufigsten gebannt</option>'
+    + '<option value="roulette" ' + (globalStatsSortMode==='roulette'?'selected':'') + '>häufigster Roulette-Gewinner</option>'
+    + '<option value="shown" ' + (globalStatsSortMode==='shown'?'selected':'') + '>am häufigsten angezeigt</option>'
+    + '</select></div></div>';
+  if (!rows.length) {
+    c.innerHTML = tabs + controls + '<div class="empty-state"><div class="icon">📊</div><p>Noch keine globalen Spielstatistiken</p></div>';
+    return;
+  }
+  const rowHtml = rows.map(row => {
+    const cover = row.coverImg
+      ? '<img src="' + esc(row.coverImg) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span style="display:none;padding:4px;text-align:center;font-size:.58rem;font-weight:800;line-height:1.1">' + esc(row.gameName) + '</span>'
+      : '<span style="padding:4px;text-align:center;font-size:.58rem;font-weight:800;line-height:1.1">' + esc(row.gameName) + '</span>';
+    const deleted = row.game ? '' : '<div style="font-size:.68rem;color:var(--accent);margin-top:2px">Gelöschtes Spiel</div>';
+    return '<div class="game-library-row" style="grid-template-columns:minmax(220px,2fr) repeat(6,minmax(72px,1fr));cursor:default">'
+      + '<div class="game-library-game"><div class="game-library-cover">' + cover + '</div><div style="min-width:0"><div class="game-library-name">' + esc(row.gameName) + '</div>' + deleted + '</div></div>'
+      + '<div class="game-library-cell">' + row.selectionShownCount + '</div>'
+      + '<div class="game-library-cell">' + row.normalVoteCount + '</div>'
+      + '<div class="game-library-cell">' + row.magnetVoteCount + '</div>'
+      + '<div class="game-library-cell">' + row.banTargetCount + '</div>'
+      + '<div class="game-library-cell">' + row.rouletteWinCount + '</div>'
+      + '<div class="game-library-cell">' + row.playedCount + '</div>'
+      + '</div>';
+  }).join('');
+  c.innerHTML = tabs + controls
+    + '<div class="game-library-grid"><div class="game-library-head" style="grid-template-columns:minmax(220px,2fr) repeat(6,minmax(72px,1fr))"><span>Spiel</span><span>Angezeigt</span><span>Gewählt</span><span>Magnet</span><span>Gebannt</span><span>Roulette-Siege</span><span>Gespielt</span></div>'
+    + rowHtml + '</div>';
+}
+
+function onGlobalStatsSearch(value) {
+  globalStatsSearchQuery = value || '';
+  openGameLibraryModal('stats', true);
+}
+
+function setGlobalStatsSort(value) {
+  globalStatsSortMode = value || 'played';
+  openGameLibraryModal('stats');
+}
+
 function addGameCategoryFromLibrary() {
   const name = document.getElementById('cat-new-name')?.value || '';
   const limitRaw = document.getElementById('cat-new-limit')?.value || '';
@@ -4760,14 +5048,16 @@ function deleteGameCategory(id) {
 
 function exportGames() {
   normalizeGameCategories();
+  syncGlobalGameStatNames();
   const data = JSON.stringify({
-    version: 2,
+    version: 3,
     games: state.games || [],
     categories: (state.gameCategories || []).map(c => ({
       id: c.id,
       name: c.name,
       limit: c.limit === undefined ? '' : c.limit
-    }))
+    })),
+    globalGameStats: getGlobalGameStats()
   }, null, 2);
   const blob = new Blob([data], {type:'application/json'});
   const a = document.createElement('a');
@@ -4793,6 +5083,7 @@ function importGamesFile(event) {
       if (!Array.isArray(gamesToImport)) throw new Error('Keine Spiele gefunden');
       let added = 0;
       let categoriesAdded = 0;
+      let statsMerged = 0;
       const categoryIdMap = {};
       normalizeGameCategories();
       categoriesToImport.forEach(c => {
@@ -4829,11 +5120,12 @@ function importGamesFile(event) {
           added++;
         }
       });
+      statsMerged = mergeGlobalGameStats(imported.globalGameStats || imported.globalStats || imported.stats);
       normalizeGameCategories();
       saveLS();
       updateGameCountBadge();
       openGameLibraryModal();
-      showToast(added + ' Spiele und ' + categoriesAdded + ' Oberkategorien importiert ✓');
+      showToast(added + ' Spiele, ' + categoriesAdded + ' Oberkategorien und ' + statsMerged + ' Statistik-Einträge importiert ✓');
     } catch(err) {
       showToast('Fehler beim Importieren: ' + err.message);
     }
@@ -6736,6 +7028,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
         gameId: action.gameId
       });
       state.currentGameVotes = { ...state.currentGameVotes, [playerKey]: voteRecord };
+      trackAcceptedGameVoteStats(currentRoundId, playerKey, voteRecord);
       console.log('[vote accepted]', playerKey, modeJoker === 'ban' ? bannedGameIds : action.gameId, state.currentGameVotes);
       window.renderGameVoteHost();
       fbPushState();
@@ -8017,6 +8310,8 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const g = state.games.find(x => x.id === gameId);
     if (!g) { showToast('Ausgewähltes Spiel nicht gefunden.'); return; }
     console.log('[gameVote finish]', state.currentGameVotes, g);
+    const voteRoundId = state.currentVoteRoundId || state.currentVoteId || 'legacy-' + Date.now();
+    trackRouletteWinStats(voteRoundId, gameId);
     state.currentVoteWinner = gameId;
     state.plan.push({
       gameId: g.id,
