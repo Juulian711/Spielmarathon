@@ -133,6 +133,22 @@ header::before{content:'';position:absolute;inset:0;background:radial-gradient(e
 .game-library-active{display:flex;align-items:center;justify-content:center;gap:6px;font-size:.72rem;color:var(--muted);cursor:pointer;margin:0}
 .game-library-active input{width:17px;height:17px;accent-color:var(--green)}
 .game-library-edit{justify-self:end}
+.global-stats-summary{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.global-stats-summary-card{background:var(--surface);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:13px;min-width:0}
+.global-stats-summary-label{font-size:.66rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.global-stats-summary-value{font-size:1rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.global-stats-table{width:100%;border-collapse:separate;border-spacing:0 7px}
+.global-stats-table th{padding:6px 9px;text-align:right;color:var(--muted);font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.global-stats-table th:first-child{text-align:left}
+.global-stats-table td{padding:10px 9px;text-align:right;background:var(--surface);font-size:.8rem;font-variant-numeric:tabular-nums}
+.global-stats-table td:first-child{border-radius:11px 0 0 11px;text-align:left}.global-stats-table td:last-child{border-radius:0 11px 11px 0}
+.global-stats-table tbody tr{cursor:pointer;transition:transform .15s,filter .15s}.global-stats-table tbody tr:hover{transform:translateY(-1px);filter:brightness(1.12)}
+.global-stats-game{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;align-items:center;min-width:210px}
+.global-stats-cover{width:52px;height:52px;border-radius:9px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;text-align:center;font-size:1.35rem;flex-shrink:0}
+.global-stats-cover img{width:100%;height:100%;object-fit:cover}.global-stats-cover-name{padding:4px;font-size:.54rem;font-weight:850;line-height:1.08}
+.global-stats-mobile-list{display:none}.global-stats-mobile-card{background:var(--surface);border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:12px;cursor:pointer}
+.global-stats-mobile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:11px}.global-stats-mobile-stat{background:rgba(255,255,255,.045);border-radius:8px;padding:8px;text-align:center}.global-stats-mobile-stat span{display:block;font-size:.62rem;color:var(--muted);margin-bottom:3px}.global-stats-mobile-stat strong{font-size:.95rem;font-variant-numeric:tabular-nums}
+@media(max-width:850px){.global-stats-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.global-stats-desktop{display:none}.global-stats-mobile-list{display:grid;gap:10px}.game-library-searchbar.global-stats-controls{grid-template-columns:1fr}.global-stats-summary-card:first-child{grid-column:1/-1}}
 
 /* INPUTS */
 label{font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px}
@@ -508,6 +524,12 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
         <p style="font-size:.85rem;color:var(--muted);line-height:1.5;margin-bottom:12px">Abgeschlossene Spielabende ansehen, Ergebnisse vergleichen und alte Verläufe öffnen.</p>
         <button class="btn btn-gold" onclick="openTournamentHistory()" style="width:100%">Alte Turniere ansehen</button>
       </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-title">📊 Globale Spielstatistiken</div>
+        <p style="font-size:.85rem;color:var(--muted);line-height:1.5;margin-bottom:12px">Auswahl, Joker-Einsätze und gespielte Partien über alle Marathons hinweg.</p>
+        <button class="btn btn-secondary" onclick="openGlobalStatsScreen()" style="width:100%">Statistiken öffnen</button>
+      </div>
     </div>
 
     <!-- Right: Games -->
@@ -536,6 +558,14 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
     <button class="btn btn-gold" style="padding:14px 48px;font-size:1rem;border-radius:12px" onclick="startMarathon()">
       🚀 Marathon starten!
     </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ SCREEN: GLOBAL STATS ═══════════════════════ -->
+<div id="screen-global-stats" class="screen">
+  <div style="margin-top:24px">
+    <div class="section-header"><div class="section-title">📊 Globale Spielstatistiken</div><button class="btn btn-secondary btn-sm" onclick="showScreen('screen-home')">← Zurück zum Hauptmenü</button></div>
+    <div id="global-stats-screen-content"></div>
   </div>
 </div>
 
@@ -688,6 +718,13 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   <div class="modal game-vote-roulette-modal">
     <div id="game-vote-roulette-stage" class="game-vote-roulette-stage"></div>
   </div>
+</div>
+
+<div class="modal-overlay" id="modal-global-stats-detail">
+<div class="modal" style="max-width:680px">
+  <div id="global-stats-detail-content"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-global-stats-detail')">Schließen</button></div>
+</div>
 </div>
 
 <!-- Add/Edit Game -->
@@ -4540,6 +4577,7 @@ function resetGlobalGameStatsWithConfirmation() {
       }
       setGlobalGameStats(emptyGlobalGameStats());
       if (gameLibraryActiveTab === 'stats') openGameLibraryModal('stats');
+      if (document.getElementById('screen-global-stats')?.classList.contains('active')) renderGlobalStatsScreen();
       showToast('Globale Spielstatistiken zurückgesetzt.');
     },
     'Weiter'
@@ -5035,7 +5073,9 @@ function getGlobalStatsRows() {
       banTargetCount: parseInt(stat.banTargetCount, 10) || 0,
       rouletteWinCount: parseInt(stat.rouletteWinCount, 10) || 0,
       playedCount: parseInt(stat.playedCount, 10) || 0,
-      randomPlanCount: parseInt(stat.randomPlanCount, 10) || 0
+      randomPlanCount: parseInt(stat.randomPlanCount, 10) || 0,
+      lastPlayedAt: stat.lastPlayedAt || null,
+      lastSelectedAt: stat.lastSelectedAt || null
     };
   });
 }
@@ -5044,6 +5084,82 @@ function sortGlobalStatsRows(rows) {
   const sortMap = {played:'playedCount', voted:'normalVoteCount', magnet:'magnetVoteCount', banned:'banTargetCount', roulette:'rouletteWinCount', shown:'selectionShownCount'};
   const field = sortMap[globalStatsSortMode] || 'playedCount';
   return rows.sort((a,b) => (b[field] - a[field]) || a.gameName.localeCompare(b.gameName, 'de'));
+}
+
+function formatGlobalStatsDate(value) {
+  if (!value) return 'Noch nie';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Unbekannt' : date.toLocaleString('de-DE', {dateStyle:'medium', timeStyle:'short'});
+}
+
+function renderGlobalStatsCover(row, large = false) {
+  const sizeClass = large ? 'style="width:120px;height:120px;border-radius:14px;font-size:2.5rem"' : '';
+  const fallback = '<span class="global-stats-cover-name" style="' + (large ? 'font-size:.75rem' : '') + '">🎲<br>' + esc(row.gameName) + '</span>';
+  return '<div class="global-stats-cover" ' + sizeClass + '>' + (row.coverImg
+    ? '<img src="' + esc(row.coverImg) + '" alt="' + esc(row.gameName) + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"><span class="global-stats-cover-name" style="display:none;' + (large ? 'font-size:.75rem' : '') + '">🎲<br>' + esc(row.gameName) + '</span>'
+    : fallback) + '</div>';
+}
+
+function openGlobalStatsScreen() {
+  showScreen('screen-global-stats');
+  renderGlobalStatsScreen();
+}
+
+function renderGlobalStatsScreen() {
+  const c = document.getElementById('global-stats-screen-content');
+  if (!c) return;
+  const allRows = getGlobalStatsRows();
+  const query = String(globalStatsSearchQuery || '').trim().toLowerCase();
+  const rows = sortGlobalStatsRows(allRows.filter(row => !query || row.gameName.toLowerCase().includes(query)));
+  const totalPlayed = allRows.reduce((sum, row) => sum + row.playedCount, 0);
+  const topName = field => {
+    const sorted = [...allRows].sort((a,b) => (b[field] - a[field]) || a.gameName.localeCompare(b.gameName, 'de'));
+    return sorted[0]?.[field] > 0 ? sorted[0].gameName : '—';
+  };
+  const summary = [
+    ['Partien insgesamt', totalPlayed],
+    ['Meistgespielt', topName('playedCount')],
+    ['Meistgewählt', topName('normalVoteCount')],
+    ['Meistgebannt', topName('banTargetCount')],
+    ['Meiste Magnet-Hilfe', topName('magnetVoteCount')]
+  ].map(([label,value]) => `<div class="global-stats-summary-card"><div class="global-stats-summary-label">${label}</div><div class="global-stats-summary-value" title="${esc(String(value))}">${esc(String(value))}</div></div>`).join('');
+  const controls = `<div class="card" style="margin-bottom:16px"><div class="game-library-searchbar global-stats-controls" style="margin:0"><div><label for="global-stats-screen-search">Spiel suchen</label><div class="game-search-wrap"><span class="game-search-icon">🔎</span><input id="global-stats-screen-search" type="text" placeholder="Suche nach Spielname" value="${esc(globalStatsSearchQuery)}" oninput="onGlobalStatsScreenSearch(this.value)"></div></div><div style="min-width:240px"><label for="global-stats-screen-sort">Sortieren</label><select id="global-stats-screen-sort" onchange="setGlobalStatsScreenSort(this.value)"><option value="played" ${globalStatsSortMode==='played'?'selected':''}>am häufigsten gespielt</option><option value="voted" ${globalStatsSortMode==='voted'?'selected':''}>am häufigsten gewählt</option><option value="banned" ${globalStatsSortMode==='banned'?'selected':''}>am häufigsten gebannt</option><option value="magnet" ${globalStatsSortMode==='magnet'?'selected':''}>am häufigsten mit Magnet verstärkt</option><option value="roulette" ${globalStatsSortMode==='roulette'?'selected':''}>häufigster Roulette-Sieger</option><option value="shown" ${globalStatsSortMode==='shown'?'selected':''}>am häufigsten angezeigt</option></select></div></div></div>`;
+  if (!rows.length) {
+    c.innerHTML = `<div class="global-stats-summary">${summary}</div>${controls}<div class="card"><div class="empty-state"><div class="icon">📊</div><p>${query ? 'Keine Spiele für diese Suche gefunden.' : 'Noch keine globalen Spielstatistiken vorhanden.'}</p></div></div>`;
+    return;
+  }
+  const desktopRows = rows.map(row => `<tr onclick="openGlobalStatsDetail('${encodeURIComponent(row.gameId)}')"><td><div class="global-stats-game">${renderGlobalStatsCover(row)}<div><div class="game-library-name">${esc(row.gameName)}</div>${row.game ? '' : '<div style="font-size:.68rem;color:var(--accent);margin-top:3px">Nicht mehr in der Bibliothek</div>'}</div></div></td><td>${row.selectionShownCount}</td><td>${row.normalVoteCount}</td><td>${row.magnetVoteCount}</td><td>${row.banTargetCount}</td><td>${row.rouletteWinCount}</td><td>${row.playedCount}</td><td>${row.randomPlanCount}</td><td style="white-space:nowrap">${esc(formatGlobalStatsDate(row.lastPlayedAt))}</td></tr>`).join('');
+  const mobileRows = rows.map(row => `<div class="global-stats-mobile-card" onclick="openGlobalStatsDetail('${encodeURIComponent(row.gameId)}')"><div class="global-stats-game">${renderGlobalStatsCover(row)}<div><div class="game-library-name">${esc(row.gameName)}</div>${row.game ? '' : '<div style="font-size:.68rem;color:var(--accent);margin-top:3px">Nicht mehr in der Bibliothek</div>'}<div style="font-size:.68rem;color:var(--muted);margin-top:4px">Zuletzt gespielt: ${esc(formatGlobalStatsDate(row.lastPlayedAt))}</div></div></div><div class="global-stats-mobile-grid">${[['Angezeigt',row.selectionShownCount],['Gewählt',row.normalVoteCount],['Magnet',row.magnetVoteCount],['Gebannt',row.banTargetCount],['Roulette',row.rouletteWinCount],['Gespielt',row.playedCount]].map(([label,value]) => `<div class="global-stats-mobile-stat"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div>`).join('');
+  c.innerHTML = `<div class="global-stats-summary">${summary}</div>${controls}<div class="card global-stats-desktop" style="overflow-x:auto"><table class="global-stats-table"><thead><tr><th>Spiel</th><th>Angezeigt</th><th>Gewählt</th><th>Magnet</th><th>Gebannt</th><th>Roulette-Siege</th><th>Gespielt</th><th>Zufallsplan</th><th>Zuletzt gespielt</th></tr></thead><tbody>${desktopRows}</tbody></table></div><div class="global-stats-mobile-list">${mobileRows}</div>`;
+}
+
+function onGlobalStatsScreenSearch(value) {
+  globalStatsSearchQuery = value || '';
+  renderGlobalStatsScreen();
+  setTimeout(() => {
+    const input = document.getElementById('global-stats-screen-search');
+    if (!input) return;
+    input.focus();
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch {}
+  }, 0);
+}
+
+function setGlobalStatsScreenSort(value) {
+  globalStatsSortMode = value || 'played';
+  renderGlobalStatsScreen();
+}
+
+function openGlobalStatsDetail(encodedGameId) {
+  const gameId = decodeURIComponent(encodedGameId || '');
+  const row = getGlobalStatsRows().find(item => item.gameId === gameId);
+  const c = document.getElementById('global-stats-detail-content');
+  if (!row || !c) return;
+  const category = row.game ? getCategoryName(getGameCategoryId(row.game)) : 'Nicht mehr in der Bibliothek';
+  const rouletteShare = row.normalVoteCount ? Math.round(row.rouletteWinCount / row.normalVoteCount * 100) : 0;
+  const playedShare = row.rouletteWinCount ? Math.round(row.playedCount / row.rouletteWinCount * 100) : 0;
+  const stats = [['Angezeigt',row.selectionShownCount],['Normal gewählt',row.normalVoteCount],['Mit Magnet verstärkt',row.magnetVoteCount],['Gebannt',row.banTargetCount],['Roulette-Siege',row.rouletteWinCount],['Gespielt und abgeschlossen',row.playedCount],['In zufälligen Spielplänen',row.randomPlanCount]];
+  c.innerHTML = `<div style="display:flex;gap:18px;align-items:center;margin-bottom:18px">${renderGlobalStatsCover(row,true)}<div><div style="font-size:1.45rem;font-weight:1000">${esc(row.gameName)}</div><div style="font-size:.82rem;color:var(--muted);margin-top:5px">Oberkategorie: ${esc(category || 'Ohne Oberkategorie')}</div>${row.game ? '' : '<div style="color:var(--accent);font-size:.78rem;font-weight:800;margin-top:6px">Nicht mehr in der Bibliothek</div>'}</div></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${stats.map(([label,value]) => `<div style="background:var(--surface);border-radius:9px;padding:10px"><div style="font-size:.68rem;color:var(--muted)">${label}</div><div style="font-size:1.15rem;font-weight:900;margin-top:3px">${value}</div></div>`).join('')}</div><div style="margin-top:14px;background:var(--surface);border-radius:10px;padding:12px;font-size:.82rem;line-height:1.7"><div>Roulette-Siege an normalen Auswahlen: <strong>${rouletteShare}%</strong></div><div>Tatsächlich gespielt an Roulette-Siegen: <strong>${playedShare}%</strong></div><div>Zuletzt gespielt: <strong>${esc(formatGlobalStatsDate(row.lastPlayedAt))}</strong></div></div>`;
+  openModal('modal-global-stats-detail');
 }
 
 function renderGlobalGameStatsLibrary(c, tabs) {
