@@ -159,6 +159,7 @@ textarea{resize:vertical;min-height:60px}
 .form-row>*{flex:1;min-width:100px}
 .form-group{margin-bottom:14px}
 input[type=range]{width:100%;accent-color:var(--accent)}
+.scope-choice.active{background:var(--accent);color:#fff;box-shadow:0 3px 10px rgba(233,69,96,.25)}
 
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border:none;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer;transition:var(--transition)}
@@ -496,16 +497,29 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
         </div>
         <hr class="divider"/>
         <div class="form-group">
-          <label>Zeitlimit (Minuten, 0 = kein Limit)</label>
-          <input type="number" id="time-limit" value="120" min="0" max="600"/>
-        </div>
-        <div class="form-group">
           <label>Marathon-Modus</label>
           <select id="marathon-mode" onchange="updateMarathonMode(this.value)">
             <option value="random">Komplett zufälliger Spielplan</option>
             <option value="marioKart">Spielwahl-Roulette</option>
           </select>
         </div>
+        <div class="form-group" style="margin-top:14px">
+          <label style="font-weight:800;color:var(--text);margin-bottom:8px">Marathon-Umfang</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface);border-radius:10px;padding:5px">
+            <label style="margin:0"><input type="radio" name="marathon-scope" value="time" checked onchange="updateMarathonScope(this.value)" style="display:none"><span class="scope-choice" data-scope-choice="time" style="display:block;padding:9px 7px;border-radius:7px;text-align:center;font-size:.78rem;font-weight:800;cursor:pointer">⏱️ Nach Zeit</span></label>
+            <label style="margin:0"><input type="radio" name="marathon-scope" value="gameCount" onchange="updateMarathonScope(this.value)" style="display:none"><span class="scope-choice" data-scope-choice="gameCount" style="display:block;padding:9px 7px;border-radius:7px;text-align:center;font-size:.78rem;font-weight:800;cursor:pointer">🎮 Nach Anzahl der Spiele</span></label>
+          </div>
+        </div>
+        <div class="form-group" id="marathon-scope-time-fields">
+          <label>Zeitlimit in Minuten</label>
+          <input type="number" id="time-limit" value="120" min="1" max="1440" oninput="updateMarathonConfigPreview()"/>
+        </div>
+        <div class="form-group" id="marathon-scope-count-fields" style="display:none">
+          <label>Anzahl der Spiele</label>
+          <input type="number" id="configured-game-count" value="5" min="1" max="100" oninput="updateMarathonConfigPreview()"/>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">Die Spieldauer wird in diesem Modus nicht berücksichtigt.</div>
+        </div>
+        <div id="marathon-config-preview" style="background:rgba(78,205,196,.08);border:1px solid rgba(78,205,196,.25);border-radius:9px;padding:9px 11px;font-size:.78rem;color:var(--green);font-weight:800"></div>
       </div>
 
       <!-- Saved sessions -->
@@ -543,8 +557,8 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
           </div>
         </div>
         <div style="background:var(--surface);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px">
-          <p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">Klicke auf den Button um eine zufällige Spielreihenfolge für den Marathon zu generieren.</p>
-          <button class="btn btn-gold" onclick="generateAndShowPlan()" style="width:100%">🔀 Zufällige Reihenfolge generieren</button>
+          <p id="plan-generator-description" style="font-size:.85rem;color:var(--muted);margin-bottom:10px">Erzeuge einen zufälligen, zeitlich passenden Spielplan.</p>
+          <button class="btn btn-gold" id="plan-generator-button" onclick="generateAndShowPlan()" style="width:100%">🔀 Spielplan-Vorschau erzeugen</button>
         </div>
         <div id="plan-preview-list" class="game-list" style="max-height:340px;overflow-y:auto"></div>
         <p id="game-filter-note" style="font-size:.75rem;color:var(--gold);margin-top:8px;display:none">
@@ -1337,10 +1351,14 @@ let state = {
   currentVoteWinner:null,
   currentVoteDisplayOrder:[],
   pendingTipster:null,
+  marathonScope:'time',
   timeLimit:120,
+  configuredGameCount:5,
+  targetGameCount:0,
   marathonMode:'random',
   startTime:null,
   activeJokers:{},
+  _useDurationFallback:false,
   _marathonFinished:false,
   editGameId:null,
 };
@@ -1383,6 +1401,7 @@ function resetMarathonRuntime(options = {}) {
   state.currentVoteDisplayOrder = [];
   state.pendingTipster = null;
   state.marathonMode = getSelectedMarathonMode();
+  state.marathonScope = getSelectedMarathonScope();
   state.currentIdx = -1;
   state.scores = {};
   state.history = [];
@@ -1398,6 +1417,8 @@ function resetMarathonRuntime(options = {}) {
   state.goalAchieved = {};
   state.activeJokers = {};
   state.startTime = null;
+  state._useDurationFallback = false;
+  state.targetGameCount = 0;
   state._marathonStarted = false;
   state._marathonFinished = false;
   state._setupPhase = null;
@@ -1492,7 +1513,10 @@ function buildSessionSnapshot(name, finalize=false) {
     currentVoteWinner: state.currentVoteWinner || null,
     currentVoteDisplayOrder: state.currentVoteDisplayOrder || [],
     pendingTipster: state.pendingTipster || null,
+    marathonScope: normalizeMarathonScope(state.marathonScope),
     timeLimit: state.timeLimit,
+    configuredGameCount: state.configuredGameCount,
+    targetGameCount: state.targetGameCount,
     marathonMode: normalizeMarathonMode(state.marathonMode),
     startTime: state.startTime,
     games: state.games,
@@ -1608,6 +1632,7 @@ function addPlayer() {
   inp.value = '';
   renderPlayerSetup();
   updateGameFilterNote();
+  updateMarathonConfigPreview(true);
   saveLS();
 }
 
@@ -1617,6 +1642,7 @@ function removePlayer(name) {
   state.players.forEach((p,i) => p.color = PLAYER_COLORS[i]);
   renderPlayerSetup();
   updateGameFilterNote();
+  updateMarathonConfigPreview(true);
   saveLS();
 }
 
@@ -1924,9 +1950,123 @@ function getCompatibleGames() {
 }
 
 function getAvgDur(g) {
-  // Use average of min and max duration if both set
-  if (g.minDur && g.minDur !== g.dur) return Math.round((g.minDur + g.dur) / 2);
-  return g.dur || 30;
+  const minDuration = parseFloat(g?.minDur);
+  const maxDuration = parseFloat(g?.dur);
+  if (Number.isFinite(minDuration) && minDuration > 0 && Number.isFinite(maxDuration) && maxDuration > 0) {
+    return (minDuration + maxDuration) / 2;
+  }
+  if (Number.isFinite(maxDuration) && maxDuration > 0) return maxDuration;
+  if (Number.isFinite(minDuration) && minDuration > 0) return minDuration;
+  return 30;
+}
+
+function normalizeMarathonScope(scope) {
+  return scope === 'gameCount' ? 'gameCount' : 'time';
+}
+
+function getSelectedMarathonScope() {
+  return normalizeMarathonScope(document.querySelector('input[name="marathon-scope"]:checked')?.value || state.marathonScope);
+}
+
+function getScopeEligibleGames() {
+  return applyCategoryLimits(shuffle(getCompatibleGames()));
+}
+
+function calculateRouletteTargetGameCount(timeLimit = state.timeLimit) {
+  const compatible = getCompatibleGames();
+  const capacity = getScopeEligibleGames().length;
+  if (!compatible.length || capacity < 1) return 0;
+  const averageEligibleDuration = compatible.reduce((sum, game) => sum + getAvgDur(game), 0) / compatible.length;
+  const estimate = Math.round(Math.max(0, Number(timeLimit) || 0) / Math.max(1, averageEligibleDuration));
+  return Math.max(1, Math.min(capacity, estimate || 1));
+}
+
+function readMarathonScopeConfigFromUI() {
+  state.marathonScope = getSelectedMarathonScope();
+  state.timeLimit = Math.max(1, parseInt(document.getElementById('time-limit')?.value, 10) || state.timeLimit || 120);
+  state.configuredGameCount = Math.max(1, parseInt(document.getElementById('configured-game-count')?.value, 10) || state.configuredGameCount || 5);
+}
+
+function configureMarathonTarget() {
+  const capacity = getScopeEligibleGames().length;
+  if (state.marathonScope === 'gameCount') {
+    state.targetGameCount = Math.min(state.configuredGameCount, capacity);
+  } else if (isMarioKartMode()) {
+    state.targetGameCount = calculateRouletteTargetGameCount(state.timeLimit);
+  } else {
+    state.targetGameCount = 0;
+  }
+  return state.targetGameCount;
+}
+
+function getCompletedGameCount() {
+  return (state.plan || []).filter(entry => entry.done).length;
+}
+
+function getMarathonTargetGameCount() {
+  if (state.targetGameCount > 0) return state.targetGameCount;
+  if (!isMarioKartMode() && state.plan?.length) return state.plan.length;
+  return state.marathonScope === 'gameCount' ? state.configuredGameCount : 0;
+}
+
+function getMarathonRemainingTime() {
+  const limit = Math.max(0, Number(state.timeLimit) || 0);
+  if (!limit) return 0;
+  if (!state._useDurationFallback && state.startTime && Number.isFinite(Number(state.startTime))) {
+    const elapsedMinutes = Math.max(0, (Date.now() - Number(state.startTime)) / 60000);
+    return limit - elapsedMinutes;
+  }
+  return limit - getMarioKartUsedDuration();
+}
+
+function weightedRandomGamesWithoutReplacement(games, count, targetDuration) {
+  const pool = [...games];
+  const selected = [];
+  while (pool.length && selected.length < count) {
+    const weights = pool.map(game => 1 / (Math.abs(getAvgDur(game) - targetDuration) + 1));
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    let cursor = Math.random() * total;
+    let index = weights.length - 1;
+    for (let i = 0; i < weights.length; i++) {
+      cursor -= weights[i];
+      if (cursor <= 0) { index = i; break; }
+    }
+    selected.push(pool.splice(index, 1)[0]);
+  }
+  return selected;
+}
+
+function createRandomPlanGames(compatible) {
+  const scope = normalizeMarathonScope(state.marathonScope);
+  if (scope === 'gameCount') {
+    return applyCategoryLimits(shuffle(compatible)).slice(0, state.configuredGameCount);
+  }
+  const limit = Math.max(1, state.timeLimit || 1);
+  let best = [];
+  let bestDifference = Infinity;
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const available = applyCategoryLimits(shuffle(compatible));
+    const plan = [];
+    let total = 0;
+    available.forEach(game => {
+      const duration = getAvgDur(game);
+      if (total + duration <= limit) {
+        plan.push(game);
+        total += duration;
+      }
+    });
+    if (!plan.length && available.length) {
+      const shortest = [...available].sort((a,b) => getAvgDur(a) - getAvgDur(b))[0];
+      plan.push(shortest);
+      total = getAvgDur(shortest);
+    }
+    const difference = Math.abs(limit - total);
+    if (difference < bestDifference || (difference === bestDifference && plan.length > best.length)) {
+      best = plan;
+      bestDifference = difference;
+    }
+  }
+  return best;
 }
 
 function isMarioKartMode() {
@@ -1949,16 +2089,19 @@ function getMarioKartUsedDuration() {
 
 function getMarioKartVoteCandidates() {
   const usedIds = getMarioKartPlayedGameIds();
-  let pool = getCompatibleGames().filter(g => !usedIds.has(g.id));
-  if (state.timeLimit > 0) {
-    const remaining = state.timeLimit - getMarioKartUsedDuration();
-    pool = pool.filter(g => getAvgDur(g) <= remaining);
-  }
-  return applyCategoryLimits(pool, state.plan || []);
+  const pool = getCompatibleGames().filter(g => !usedIds.has(g.id));
+  return applyCategoryLimits(shuffle(pool), state.plan || []);
 }
 
 function buildMarioKartVoteOptions() {
-  return shuffle(getMarioKartVoteCandidates()).slice(0, 4).map(g => ({
+  const candidates = getMarioKartVoteCandidates();
+  const completed = getCompletedGameCount();
+  const remainingGameCount = Math.max(1, getMarathonTargetGameCount() - completed);
+  const remainingTime = getMarathonRemainingTime();
+  const selected = state.marathonScope === 'time'
+    ? weightedRandomGamesWithoutReplacement(candidates, 4, Math.max(0, remainingTime) / remainingGameCount)
+    : shuffle(candidates).slice(0, 4);
+  return selected.map(g => ({
     id: g.id,
     name: g.name,
     type: g.type,
@@ -1981,6 +2124,8 @@ function renderGameListSetup() {
 
 function generateAndShowPlan() {
   state.marathonMode = getSelectedMarathonMode();
+  readMarathonScopeConfigFromUI();
+  configureMarathonTarget();
   const n = state.players.length;
   const compatible = n > 0
     ? state.games.filter(g => g.enabled !== false && g.minP <= n && g.maxP >= n)
@@ -1989,13 +2134,22 @@ function generateAndShowPlan() {
     showToast(n > 0 ? 'Keine aktivierten Spiele für diese Spielerzahl!' : 'Keine aktivierten Spiele in der Bibliothek!');
     return;
   }
-  const shuffled = applyCategoryLimits(shuffle(compatible));
-  trackRandomPlanStats('randomPlan-' + Date.now() + '-' + uid(), shuffled);
-  // Save this order so marathon uses the same sequence
-  state.previewOrder = shuffled.map(g => g.id);
-
   const c = document.getElementById('plan-preview-list');
-  c.innerHTML = shuffled.map((g, i) => {
+  if (isMarioKartMode()) {
+    state.previewOrder = [];
+    const target = state.targetGameCount;
+    c.innerHTML = `<div class="empty-state" style="padding:20px"><div class="icon">🏁</div><p>Im Spielwahl-Roulette werden die Optionen vor jeder Runde neu angeboten.</p><p style="margin-top:7px;color:var(--gold);font-weight:800">Geplant: ${target} Spiel${target===1?'':'e'}${state.marathonScope==='time' ? ` in ${state.timeLimit} Minuten` : ''}</p></div>`;
+    if (state.marathonScope === 'gameCount' && target < state.configuredGameCount) showToast(`Es sind nur ${target} passende Spiele verfügbar.`);
+    else showToast(`Ungefähr ${target} Spiele geplant.`);
+    updateGameFilterNote();
+    return;
+  }
+  const planned = createRandomPlanGames(compatible);
+  state.targetGameCount = planned.length;
+  trackRandomPlanStats('randomPlan-' + Date.now() + '-' + uid(), planned);
+  state.previewOrder = planned.map(g => g.id);
+
+  c.innerHTML = planned.map((g, i) => {
     const typeColors = {ffa:'badge-ffa','2v2':'badge-2v2','3v1':'badge-3v1',coop:'badge-coop'};
     const icons = {ffa:'⚔️','2v2':'🤝','3v1':'👑',coop:'🤜'};
     const winCondition = normalizeWinCondition(g.winCondition);
@@ -2010,7 +2164,8 @@ function generateAndShowPlan() {
       <span class="badge ${typeColors[g.type]}">${TYPE_SHORT[g.type]||g.type}</span>
     </div>`;
   }).join('');
-  showToast(`${shuffled.length} Spiele gemischt 🔀`);
+  if (state.marathonScope === 'gameCount' && planned.length < state.configuredGameCount) showToast(`Es sind nur ${planned.length} passende Spiele verfügbar.`);
+  else showToast(`${planned.length} Spiele geplant 🔀`);
   updateGameFilterNote();
 }
 
@@ -2330,9 +2485,12 @@ function startMarathon() {
     try { fbDisconnect(); } catch(e) { console.warn('Could not close old Firebase session:', e); }
   }
 
-  state.timeLimit = parseInt(document.getElementById('time-limit').value) || 0;
   state.marathonMode = getSelectedMarathonMode();
+  readMarathonScopeConfigFromUI();
+  configureMarathonTarget();
+  if (state.marathonScope === 'gameCount' && state.targetGameCount < state.configuredGameCount) showToast(`Es sind nur ${state.targetGameCount} passende Spiele verfügbar.`);
   state.startTime = Date.now();
+  state._useDurationFallback = false;
   state.scores    = {};
   state.jokers    = {};
   state.history   = [];
@@ -2459,7 +2617,7 @@ function finishJokerPick() {
     showScreen('screen-marathon');
   }
   document.getElementById('header-sub').textContent =
-    `${state.players.map(p=>p.name).join(', ')} · ${state.plan.length} Spiele`;
+    `${state.players.map(p=>p.name).join(', ')} · ${getMarathonTargetGameCount()} Spiele geplant`;
   nextGame();
   renderAll();
   setTimeout(()=>{ if(typeof fbIsHost!=='undefined'&&fbIsHost) fbPushState(); }, 500);
@@ -2468,6 +2626,8 @@ function finishJokerPick() {
 function _finishSetupAndStart() {
   if (state._marathonStarted) return; // guard against double-call
   state._marathonStarted = true;
+  state.startTime = Date.now();
+  state._useDurationFallback = false;
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
     showScreen('screen-joker-pick');
     renderJokerPickScreen();
@@ -2475,7 +2635,7 @@ function _finishSetupAndStart() {
     showScreen('screen-marathon');
   }
   document.getElementById('header-sub').textContent =
-    `${state.players.map(p=>p.name).join(', ')} · ${state.plan.length} Spiele`;
+    `${state.players.map(p=>p.name).join(', ')} · ${getMarathonTargetGameCount()} Spiele geplant`;
   nextGame();
   renderAll();
   // Push full state to Firebase now that marathon is running
@@ -2492,6 +2652,7 @@ function buildPlan() {
     state.currentIdx = -1;
     return;
   }
+  const usedPreview = !!(state.previewOrder && state.previewOrder.length);
   let pool;
   if (state.previewOrder && state.previewOrder.length) {
     // Use the exact order from the library preview
@@ -2505,15 +2666,15 @@ function buildPlan() {
   } else {
     pool = shuffle(getCompatibleGames()); // getCompatibleGames already filters enabled
   }
-  pool = applyCategoryLimits(pool);
-  if (state.timeLimit > 0) {
-    let total = 0;
-    pool = pool.filter(g => {
-      const avg = getAvgDur(g);
-      if (total + avg <= state.timeLimit) { total += avg; return true; }
-      return false;
-    });
+  if (state.previewOrder?.length) pool = applyCategoryLimits(pool);
+  else pool = createRandomPlanGames(pool);
+  if (state.previewOrder?.length && state.marathonScope === 'gameCount') pool = pool.slice(0, state.configuredGameCount);
+  if (state.previewOrder?.length && state.marathonScope === 'time') {
+    const previewIds = new Set(state.previewOrder);
+    pool = pool.filter(game => previewIds.has(game.id));
   }
+  state.targetGameCount = pool.length;
+  if (!usedPreview) trackRandomPlanStats('randomPlan-' + Date.now() + '-' + uid(), pool);
   state.plan = pool.map(g => ({
     gameId: g.id,
     rule:   pickRandom(g.rules || ['Sonderaufgabe']),
@@ -2590,6 +2751,16 @@ function nextGame() {
     return;
   }
   if (isMarioKartMode()) {
+    const target = getMarathonTargetGameCount();
+    if (target > 0 && getCompletedGameCount() >= target) {
+      showEndScreen();
+      return;
+    }
+    const revengeEntry = state.plan[state.currentIdx + 1];
+    if (revengeEntry?.isRevanche && !revengeEntry.done) {
+      _doNextGame();
+      return;
+    }
     startGameVoteRound();
     return;
   }
@@ -2627,8 +2798,14 @@ function _doNextGame() {
 }
 
 function startGameVoteRound() {
+  const target = getMarathonTargetGameCount();
+  if (target > 0 && getCompletedGameCount() >= target) {
+    showEndScreen();
+    return;
+  }
   const options = buildMarioKartVoteOptions();
   if (!options.length) {
+    showToast('Es sind keine weiteren passenden Spiele verfügbar.');
     showEndScreen();
     return;
   }
@@ -3315,14 +3492,16 @@ function finishMarioKartSelection(gameId) {
 }
 
 function updateProgressBar() {
-  const total = state.plan.length;
-  const done = state.plan.filter(e=>e.done).length;
-  const pct = total > 0 ? Math.round((done/total)*100) : 0;
+  const total = Math.max(0, getMarathonTargetGameCount() || state.plan.length);
+  const done = getCompletedGameCount();
+  const pct = total > 0 ? Math.min(100, Math.round((done/total)*100)) : 0;
   const half = Math.ceil(total/2);
   const label = document.getElementById('progress-label');
   const pctEl = document.getElementById('progress-pct');
   const bar = document.getElementById('progress-fill-bar');
-  if (label) label.textContent = `${done} / ${total} Spiele${done===half&&total>0?' · ⚡ Hälfte!':''}`;
+  const remainingTime = state.marathonScope === 'time' ? getMarathonRemainingTime() : null;
+  const timeText = remainingTime === null ? '' : remainingTime < 0 ? ' · ⚠️ Zeitlimit überschritten' : ` · ca. ${Math.ceil(remainingTime)} von ${state.timeLimit} Minuten verbleibend`;
+  if (label) label.textContent = `${done} / ${total} Spiele${done===half&&total>0?' · ⚡ Hälfte!':''}${timeText}`;
   if (pctEl) pctEl.textContent = `${pct}%`;
   if (bar) bar.style.width = pct+'%';
   // Update next-game button
@@ -3337,6 +3516,10 @@ function updateProgressBar() {
       btn.textContent = '📱 Spielauswahl läuft';
       btn.className = 'btn btn-secondary';
       btn.disabled = true;
+    } else if (isMarioKartMode() && getMarathonTargetGameCount() > 0 && getCompletedGameCount() >= getMarathonTargetGameCount()) {
+      btn.textContent = '🏆 Turnier beenden';
+      btn.className = 'btn btn-gold';
+      btn.disabled = false;
     } else if (isMarioKartMode()) {
       btn.textContent = getMarioKartVoteCandidates().length ? '🏁 Nächstes Spiel wählen' : '🏆 Turnier beenden';
       btn.className = getMarioKartVoteCandidates().length ? 'btn btn-primary' : 'btn btn-gold';
@@ -3354,8 +3537,8 @@ function updateProgressBar() {
 }
 
 function checkUnderdogAuto() {
-  const total = state.plan.length;
-  const done = state.plan.filter(e=>e.done).length;
+  const total = getMarathonTargetGameCount() || state.plan.length;
+  const done = getCompletedGameCount();
   // Halfway = after ceiling(total/2) games for odd numbers
   const half = Math.ceil(total/2);
   if (done !== half) return;
@@ -3869,6 +4052,7 @@ function confirmJoker() {
         done: false,
         isRevanche: true
       });
+      if (!isMarioKartMode()) state.targetGameCount = Math.max(state.targetGameCount || 0, state.plan.length);
       showToast(`🔁 Revanche! ${lastGame.name} wird nochmals gespielt.`);
       renderPlanList();
     }
@@ -4106,7 +4290,12 @@ function finishTournamentAndReturnHome(snapshot, name) {
     players: snapshot.players, scores: snapshot.scores,
     history: snapshot.history, skipped: snapshot.skipped || [], games: snapshot.games,
     gameCategories: snapshot.gameCategories || [],
-    marathonMode: normalizeMarathonMode(snapshot.marathonMode)});
+    marathonMode: normalizeMarathonMode(snapshot.marathonMode),
+    marathonScope: normalizeMarathonScope(snapshot.marathonScope),
+    configuredGameCount: snapshot.configuredGameCount || 0,
+    targetGameCount: snapshot.targetGameCount || snapshot.plan?.length || 0,
+    actualGameCount: snapshot.history?.length || 0,
+    timeLimit: snapshot.timeLimit || 0});
 
   closeModal('modal-save');
   resetMarathonRuntime({ disconnectFirebase: true, clearAutosave: true });
@@ -4174,9 +4363,13 @@ function loadSession(id) {
   state.currentIdx = s.currentIdx ?? -1;
   state.jokers     = s.jokers  || {};
   state.jokerUses  = s.jokerUses || {};
-  state.timeLimit  = s.timeLimit || 120;
+  state.marathonScope = normalizeMarathonScope(s.marathonScope || 'time');
+  state.timeLimit  = s.timeLimit ?? 120;
+  state.configuredGameCount = Math.max(1, parseInt(s.configuredGameCount, 10) || 5);
+  state.targetGameCount = Math.max(0, parseInt(s.targetGameCount, 10) || 0);
   state.marathonMode = normalizeMarathonMode(s.marathonMode);
   state.startTime  = s.startTime || Date.now();
+  state._useDurationFallback = true;
   state.jokerPicks = s.jokerPicks || {};
   state.skipped    = s.skipped   || [];
   state.currentVoteOptions = Array.isArray(s.currentVoteOptions) ? s.currentVoteOptions : [];
@@ -4199,6 +4392,10 @@ function loadSession(id) {
   if (s.games) state.games = s.games;
   if (s.gameCategories) state.gameCategories = s.gameCategories;
   normalizeGameCategories();
+  if (!state.targetGameCount) state.targetGameCount = isMarioKartMode()
+    ? calculateRouletteTargetGameCount(state.timeLimit)
+    : (state.plan.length || (state.marathonScope === 'gameCount' ? state.configuredGameCount : 0));
+  syncMarathonModeInput();
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
     showScreen('screen-joker-pick');
     renderJokerPickScreen();
@@ -4206,7 +4403,7 @@ function loadSession(id) {
     showScreen('screen-marathon');
   }
   document.getElementById('header-sub').textContent =
-    `${state.players.map(p=>p.name).join(', ')} · ${state.plan.length} Spiele`;
+    `${state.players.map(p=>p.name).join(', ')} · ${getMarathonTargetGameCount()} Spiele geplant`;
   renderAll();
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) renderJokerPickScreen();
   if (state._setupPhase === 'gameVote') window.renderGameVoteHost();
@@ -4252,12 +4449,13 @@ function renderTournamentList() {
     const sorted = Object.entries(t.scores||{}).sort((a,b)=>b[1]-a[1]);
     const winner = sorted[0]?.[0] || '?';
     const modeLabel = getMarathonModeLabel(t.marathonMode || t.selectionMode);
+    const scopeLabel = getMarathonScopeLabel(t.marathonScope || 'time');
     return `<div class="tournament-item" onclick="openTournamentDetail('${t.id}')">
       <div style="font-size:1.8rem">🏆</div>
       <div class="tournament-meta">
         <div style="font-weight:700">${esc(t.name)}</div>
         <div class="tournament-winner">🥇 ${esc(winner)} · ${(t.players||[]).map(p=>esc(p.name)).join(', ')}</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${new Date(t.date).toLocaleString('de-DE')} · ${esc(modeLabel)}</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${new Date(t.date).toLocaleString('de-DE')} · ${esc(modeLabel)} · ${esc(scopeLabel)}</div>
       </div>
       <span style="color:var(--muted);font-size:.9rem">→</span>
     </div>`;
@@ -4281,6 +4479,10 @@ function openTournamentDetail(id) {
   const sorted = Object.entries(t.scores||{}).sort((a,b)=>b[1]-a[1]);
   const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
   const modeLabel = getMarathonModeLabel(t.marathonMode || t.selectionMode);
+  const scopeLabel = getMarathonScopeLabel(t.marathonScope || 'time');
+  const scopeMeta = normalizeMarathonScope(t.marathonScope || 'time') === 'time'
+    ? `${t.timeLimit || '?'} Minuten · ${t.targetGameCount || (t.history||[]).length} Spiele geplant`
+    : `${t.configuredGameCount || t.targetGameCount || (t.history||[]).length} Spiele geplant`;
   const histHtml = (t.history||[]).map((h,i) => {
     const tags = [];
     if (h.vetoed) tags.push('<span style="font-size:.68rem;background:rgba(233,69,96,.2);color:var(--accent);padding:1px 6px;border-radius:4px">🗳️ Veto</span>');
@@ -4313,7 +4515,7 @@ function openTournamentDetail(id) {
           </div>`).join('')}
       </div>
       <div style="margin-top:12px;font-size:.78rem;color:var(--muted)">
-        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.history||[]).length} Spiele · 🧭 ${esc(modeLabel)}
+        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.actualGameCount ?? (t.history||[]).length)} tatsächlich gespielt · 🧭 ${esc(modeLabel)} · ${esc(scopeLabel)} · ${esc(scopeMeta)}
       </div>
     </div>
     <div class="card">
@@ -4618,7 +4820,7 @@ function saveCurrentToLS() {
     id:'__autosave__', name:'Autosave', date:new Date().toISOString(),
     finalized:false, players:state.players, scores:state.scores,
     history:state.history, plan:state.plan, currentIdx:state.currentIdx,
-    jokers:state.jokers, jokerUses:state.jokerUses || {}, timeLimit:state.timeLimit, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
+    jokers:state.jokers, jokerUses:state.jokerUses || {}, marathonScope:normalizeMarathonScope(state.marathonScope), timeLimit:state.timeLimit, configuredGameCount:state.configuredGameCount, targetGameCount:state.targetGameCount, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
     games:state.games, jokerPicks:state.jokerPicks, skipped:state.skipped,
     gameCategories:state.gameCategories || [],
     currentVoteOptions:state.currentVoteOptions || [], currentGameVotes:state.currentGameVotes || {}, currentVoteId:state.currentVoteId || null, currentVoteRoundId:state.currentVoteRoundId || state.currentVoteId || null, currentVoteWinner:state.currentVoteWinner || null,
@@ -4857,6 +5059,10 @@ function getMarathonModeLabel(mode) {
   return normalizeMarathonMode(mode) === 'marioKart' ? 'Spielwahl-Roulette' : 'Zufallsmodus';
 }
 
+function getMarathonScopeLabel(scope) {
+  return normalizeMarathonScope(scope) === 'gameCount' ? 'Nach Anzahl' : 'Nach Zeit';
+}
+
 function getSelectedMarathonMode() {
   return normalizeMarathonMode(document.getElementById('marathon-mode')?.value || state.marathonMode);
 }
@@ -4864,10 +5070,68 @@ function getSelectedMarathonMode() {
 function syncMarathonModeInput() {
   const sel = document.getElementById('marathon-mode');
   if (sel) sel.value = normalizeMarathonMode(state.marathonMode);
+  syncMarathonScopeInputs();
 }
 
 function updateMarathonMode(mode) {
   state.marathonMode = normalizeMarathonMode(mode);
+  state.previewOrder = [];
+  updateMarathonConfigPreview(true);
+}
+
+function syncMarathonScopeInputs() {
+  state.marathonScope = normalizeMarathonScope(state.marathonScope);
+  document.querySelectorAll('input[name="marathon-scope"]').forEach(input => { input.checked = input.value === state.marathonScope; });
+  const timeInput = document.getElementById('time-limit');
+  const countInput = document.getElementById('configured-game-count');
+  if (timeInput) timeInput.value = state.timeLimit || 120;
+  if (countInput) countInput.value = state.configuredGameCount || 5;
+  updateMarathonConfigPreview(false);
+}
+
+function updateMarathonScope(scope) {
+  state.marathonScope = normalizeMarathonScope(scope);
+  state.previewOrder = [];
+  updateMarathonConfigPreview(true);
+}
+
+function updateMarathonConfigPreview(clearPreview = true) {
+  readMarathonScopeConfigFromUI();
+  const isTime = state.marathonScope === 'time';
+  const timeFields = document.getElementById('marathon-scope-time-fields');
+  const countFields = document.getElementById('marathon-scope-count-fields');
+  if (timeFields) timeFields.style.display = isTime ? '' : 'none';
+  if (countFields) countFields.style.display = isTime ? 'none' : '';
+  document.querySelectorAll('[data-scope-choice]').forEach(choice => choice.classList.toggle('active', choice.dataset.scopeChoice === state.marathonScope));
+  const preview = document.getElementById('marathon-config-preview');
+  const compatible = getCompatibleGames();
+  const capacity = compatible.length ? getScopeEligibleGames().length : 0;
+  let estimate = 0;
+  if (capacity) {
+    if (!isTime) estimate = Math.min(state.configuredGameCount, capacity);
+    else if (isMarioKartMode()) estimate = calculateRouletteTargetGameCount(state.timeLimit);
+    else estimate = createRandomPlanGames(compatible).length;
+  }
+  if (preview) {
+    preview.textContent = !state.players.length
+      ? 'Füge Spieler hinzu, um die mögliche Spielanzahl zu berechnen.'
+      : isTime
+        ? `Geplant: ungefähr ${estimate} ${estimate===1?'Spiel':'Spiele'} in ${state.timeLimit} Minuten.`
+        : `Gewünscht: ${state.configuredGameCount} ${state.configuredGameCount===1?'Spiel':'Spiele'} · verfügbar: ${estimate}. Die Spieldauer wird ignoriert.`;
+  }
+  const description = document.getElementById('plan-generator-description');
+  const button = document.getElementById('plan-generator-button');
+  if (description) description.textContent = isMarioKartMode()
+    ? 'Im Spielwahl-Roulette werden vor jeder Runde neue Optionen angeboten; es wird kein vollständiger Plan vorab erstellt.'
+    : isTime
+      ? 'Erzeuge einen zufälligen Spielplan, dessen geschätzte Dauer möglichst gut zum Zeitlimit passt.'
+      : 'Erzeuge einen zufälligen Plan mit der gewünschten Anzahl verschiedener Spiele; Spielzeiten werden ignoriert.';
+  if (button) button.textContent = isMarioKartMode() ? '🏁 Roulette-Umfang prüfen' : '🔀 Spielplan-Vorschau erzeugen';
+  if (clearPreview) {
+    state.previewOrder = [];
+    const list = document.getElementById('plan-preview-list');
+    if (list) list.innerHTML = '<div class="empty-state" style="padding:14px"><div class="icon">🎲</div><p>Vorschau neu erzeugen</p></div>';
+  }
 }
 
 function toggleGameCategoryExpanded(id) {
@@ -6596,6 +6860,10 @@ function fbPushState() {
     activeJokers:   state.activeJokers,
     games:          cleanGames,
     marathonMode:   normalizeMarathonMode(state.marathonMode),
+    marathonScope: normalizeMarathonScope(state.marathonScope),
+    timeLimit: state.timeLimit,
+    configuredGameCount: state.configuredGameCount,
+    targetGameCount: state.targetGameCount,
     currentVoteOptions: state.currentVoteOptions || [],
     currentVoteId: state.currentVoteId || null,
     currentVoteRoundId: state.currentVoteRoundId || state.currentVoteId || null,
@@ -7019,9 +7287,12 @@ window.startMarathon = function startMarathon() {
     try { fbDisconnect(); } catch(e) { console.warn('Could not close old Firebase session:', e); }
   }
 
-  state.timeLimit = parseInt(document.getElementById('time-limit').value) || 0;
   state.marathonMode = getSelectedMarathonMode();
+  readMarathonScopeConfigFromUI();
+  configureMarathonTarget();
+  if (state.marathonScope === 'gameCount' && state.targetGameCount < state.configuredGameCount) showToast(`Es sind nur ${state.targetGameCount} passende Spiele verfügbar.`);
   state.startTime = Date.now();
+  state._useDurationFallback = false;
   state.scores = {};
   state.jokers = {};
   state.jokerUses = {};
@@ -7151,6 +7422,10 @@ window.fbPushState = function fbPushState() {
     pendingTipster,
     games: cleanGames,
     marathonMode: normalizeMarathonMode(state.marathonMode),
+    marathonScope: normalizeMarathonScope(state.marathonScope),
+    timeLimit: state.timeLimit,
+    configuredGameCount: state.configuredGameCount,
+    targetGameCount: state.targetGameCount,
     currentVoteOptions: state.currentVoteOptions || [],
     currentVoteId: state.currentVoteId || null,
     currentVoteRoundId: state.currentVoteRoundId || state.currentVoteId || null,
@@ -8461,6 +8736,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
         <p style="font-size:.9rem;color:var(--muted);line-height:1.5;margin-bottom:14px">Jede Stimme erscheint als eigene Karte. Gleiche Spiele werden mehrfach angezeigt und behalten die Farbe des jeweiligen Spielers.</p>
         <div style="display:inline-flex;align-items:center;gap:10px;background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:800;color:${allDone?'var(--green)':'var(--gold)'}">${voted} von ${total} haben gewählt</div>
       </div>
+      ${state.marathonScope === 'time' && getMarathonRemainingTime() < 0 ? '<div style="background:rgba(233,69,96,.12);border:1px solid var(--accent);color:#ffb3bd;border-radius:10px;padding:10px;text-align:center;font-weight:800">⚠️ Das geplante Zeitlimit wurde überschritten. Die verbleibenden Runden werden fortgesetzt.</div>' : ''}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">${waitingRows}</div>
       ${allDone ? '<div class="empty-state" style="margin-top:18px"><div class="icon">🃏</div><p>Alle Stimmen sind da. Das große Roulette-Fenster wird geöffnet.</p></div>' : ''}
     `;
