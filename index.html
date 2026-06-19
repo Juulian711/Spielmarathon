@@ -222,6 +222,23 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 @keyframes allGamesBannedPop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
 @keyframes allGamesBannedPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 @keyframes allGamesBannedCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+.game-vote-roulette-overlay{z-index:6000;background:radial-gradient(circle at 50% 35%,rgba(25,35,70,.72),rgba(0,0,0,.96) 70%);padding:2vh 2vw;cursor:default}
+.game-vote-roulette-modal{width:96vw;max-width:none;height:93vh;max-height:none;padding:clamp(16px,2vw,30px);overflow:hidden;background:linear-gradient(155deg,#111428,#090b15);border:2px solid rgba(255,215,0,.72);border-radius:24px;box-shadow:0 0 55px rgba(255,215,0,.22),0 35px 120px rgba(0,0,0,.9)}
+.game-vote-roulette-stage{height:100%;display:flex;flex-direction:column;overflow:auto;overscroll-behavior:contain}
+.game-vote-roulette-heading{text-align:center;color:var(--gold);font-size:clamp(.75rem,1.2vw,1rem);font-weight:900;text-transform:uppercase;letter-spacing:.14em;margin-bottom:8px}
+.game-vote-roulette-title{text-align:center;font-size:clamp(1.6rem,3.2vw,3.3rem);font-weight:1000;line-height:1.08;margin-bottom:clamp(16px,2vh,26px)}
+.game-vote-reveal-list{width:min(1100px,100%);margin:auto;display:grid;gap:clamp(12px,1.8vh,20px)}
+.game-vote-reveal-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:clamp(14px,2vw,24px);padding:clamp(16px,2vw,26px);border:3px solid var(--reveal-color);border-radius:18px;background:linear-gradient(100deg,var(--reveal-glow),rgba(255,255,255,.035));box-shadow:0 0 0 3px var(--reveal-glow),0 16px 40px rgba(0,0,0,.3);animation:gameVoteRevealIn .45s ease-out both}
+.game-vote-reveal-emoji{font-size:clamp(2.4rem,5vw,5rem);line-height:1;filter:drop-shadow(0 0 12px var(--reveal-color))}
+.game-vote-reveal-player{color:var(--reveal-color);font-size:clamp(1.25rem,2.6vw,2.4rem);font-weight:1000;line-height:1.05}
+.game-vote-reveal-text{font-size:clamp(1rem,1.7vw,1.55rem);font-weight:850;line-height:1.35;margin-top:7px}
+.game-vote-roulette-cards{flex:1;align-content:center;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:clamp(12px,1.5vw,22px);padding:8px}
+.game-vote-roulette-cards .mk-vote-card{min-height:112px;grid-template-columns:92px 1fr;padding:16px}
+.game-vote-roulette-cards .mk-vote-cover{width:92px;height:92px}
+.game-vote-roulette-stage .mk-winner-moment{width:min(680px,92%);max-width:680px;margin:auto;padding:clamp(18px,2vw,30px);animation:mkWinnerPop .42s ease-out both}
+.game-vote-roulette-stage .mk-winner-cover{height:min(52vh,470px)}
+@keyframes gameVoteRevealIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:700px){.game-vote-roulette-modal{width:98vw;height:95vh;border-radius:16px}.game-vote-roulette-cards{grid-template-columns:1fr 1fr}.game-vote-roulette-cards .mk-vote-card{grid-template-columns:64px 1fr;min-height:88px;padding:10px}.game-vote-roulette-cards .mk-vote-cover{width:64px;height:64px}}
 .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:.7rem;font-weight:700;text-transform:uppercase}
 .badge-ffa{background:rgba(233,69,96,.2);color:#e94560}
 .badge-2v2{background:rgba(78,205,196,.2);color:#4ecdc4}
@@ -664,6 +681,12 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
     <div class="all-games-banned-title" id="all-games-banned-title">ALLE SPIELE WURDEN GEBANNT!</div>
     <div class="all-games-banned-text">Eine neue Spielauswahl startet.</div>
     <div class="all-games-banned-progress" aria-hidden="true"></div>
+  </div>
+</div>
+
+<div class="modal-overlay game-vote-roulette-overlay" id="modal-game-vote-roulette" role="dialog" aria-modal="true" aria-labelledby="game-vote-roulette-title">
+  <div class="modal game-vote-roulette-modal">
+    <div id="game-vote-roulette-stage" class="game-vote-roulette-stage"></div>
   </div>
 </div>
 
@@ -2569,6 +2592,8 @@ function startGameVoteRound() {
   state.currentVoteDisplayOrder = [];
   state._gameVoteAnimating = false;
   state._gameVoteRevealShown = false;
+  if (state._gameVoteAutoStartTimer) clearTimeout(state._gameVoteAutoStartTimer);
+  state._gameVoteAutoStartTimer = null;
   state._setupPhase = 'gameVote';
   state.activeJokers = {};
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
@@ -2597,6 +2622,8 @@ async function restartGameVoteRound() {
   if (state._gameVoteRestarting) return;
   state._gameVoteRestarting = true;
   state._gameVoteAnimating = false;
+  if (state._gameVoteAutoStartTimer) clearTimeout(state._gameVoteAutoStartTimer);
+  state._gameVoteAutoStartTimer = null;
   state._setupPhase = 'voteReset';
   state.voteResetUntil = Date.now() + 5000;
   state.currentGameVotes = {};
@@ -6284,7 +6311,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
       // Never close protected workflow modals by clicking outside.
-      const blocked = ['modal-add-game','modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick','modal-all-games-banned'];
+      const blocked = ['modal-add-game','modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick','modal-all-games-banned','modal-game-vote-roulette'];
       if (blocked.includes(overlay.id)) return;
       if (e.target===overlay) overlay.classList.remove('open');
     });
@@ -7128,6 +7155,8 @@ function resetMobileGameVoteStateForRound(sessionId, playerName, roundId, phase)
   [
     '_mobileGameVotes',
     '_mobileGameVoteBans',
+    '_mobileGameVoteBanActive',
+    '_mobileGameVoteBanNotice',
     '_mobileGameVoteMode',
     '_mobileGameVoteUseMagnet',
     '_mobileGameVoteBanLimit',
@@ -7217,6 +7246,8 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       if (!window._mobileGameVoteSubmitted) window._mobileGameVoteSubmitted = {};
       if (!window._mobileGameVoteMode) window._mobileGameVoteMode = {};
       if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
+      if (!window._mobileGameVoteBanActive) window._mobileGameVoteBanActive = {};
+      if (!window._mobileGameVoteBanNotice) window._mobileGameVoteBanNotice = {};
       if (!window._mobileGameVoteBanLimit) window._mobileGameVoteBanLimit = {};
       const voteKey = getMobileVoteKey(sessionId, playerName, currentVoteRoundId);
       const alreadySaved = votedPlayers.some(n => normalizeVotePlayerName(n) === normalizeVotePlayerName(playerName)) || !!window._mobileGameVoteSubmitted[voteKey];
@@ -7230,6 +7261,8 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       window._mobileGameVoteBanLimit[voteKey] = banLeft;
       if (!window._mobileGameVoteUseMagnet) window._mobileGameVoteUseMagnet = {};
       const bannedIds = window._mobileGameVoteBans[voteKey] || [];
+      const banActive = !!window._mobileGameVoteBanActive[voteKey] && banLeft > 0;
+      const showBanNotice = !!window._mobileGameVoteBanNotice[voteKey];
       const useMagnet = !!window._mobileGameVoteUseMagnet[voteKey] && magnetLeft > 0;
       const selectedGameId = window._mobileGameVotes[voteKey] || '';
       const shownVoteCount = Math.max(votedPlayers.length, alreadySaved ? 1 : 0);
@@ -7240,7 +7273,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         && bannedIds.length <= banLeft
         && (!useMagnet || magnetLeft > 0);
       const gameButtonHtml = (g, selected, action, marker, blocked) => `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved || blocked ? '' : action}"
-        style="position:relative;display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${(alreadySaved && !selected) || blocked ? .55 : 1}">
+        style="position:relative;display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${marker?'#e94560':selected?'#ffd700':'rgba(255,255,255,.12)'};background:${marker?'#24242a':selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${marker ? .52 : ((alreadySaved && !selected) || blocked ? .55 : 1)};filter:${marker?'grayscale(1)':'none'}">
         ${marker ? `<div style="position:absolute;right:8px;top:8px;background:${marker.color};color:${marker.textColor || '#fff'};border-radius:999px;padding:3px 8px;font-size:.68rem;font-weight:900">${marker.label}</div>` : ''}
         <div onclick="smMobileOpenGameCoverOverlay('${smMobileEsc(g.id)}',event)" style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem;cursor:zoom-in">
           ${renderCoverFallbackHtml(g, smMobileEsc)}
@@ -7252,7 +7285,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
       </button>`;
       const banOptionsHtml = options.length ? options.map(g => {
         const selected = bannedIds.includes(g.id);
-        const marker = selected ? {label:'Bann', color:'#e94560'} : null;
+        const marker = selected ? {label:'🚫 Gebannt', color:'#e94560'} : null;
         return gameButtonHtml(g, selected, `smMobilePickGameBan('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`, marker, false);
       }).join('') : '<div style="text-align:center;color:#888;padding:24px;background:#1a1a2e;border-radius:14px">Keine Spiele verfügbar.</div>';
       const confirmLabel = alreadySaved
@@ -7269,17 +7302,18 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         </div>
         ${(!alreadySaved && (magnetLeft > 0 || banLeft > 0)) ? `<div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px">
           ${magnetLeft > 0 ? `<button onclick="smMobileToggleGameVoteMagnet('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="border:2px solid ${useMagnet?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:${useMagnet?'#2d2508':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🧲 Magnet-Joker <span style="color:#aaa;font-weight:700">(${magnetLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">${useMagnet ? 'Aktiv: Dein Favorit zählt dreifach.' : 'Optional auf deinen Favoriten anwenden.'}</div></button>` : ''}
-          ${banLeft > 0 ? `<div style="border:2px solid ${bannedIds.length?'#ffd700':'rgba(255,255,255,.12)'};border-radius:12px;background:#1a1a2e;color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🚫 Bann-Joker <span style="color:#aaa;font-weight:700">(${banLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">Wähle bis zu ${banLeft} Spiele, die du bannen möchtest. Jeder Bann verbraucht einen Einsatz.</div></div>` : ''}
+          ${banLeft > 0 ? `<button onclick="smMobileToggleGameVoteBan('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}')" style="border:2px solid ${banActive?'#e94560':'rgba(255,255,255,.12)'};border-radius:12px;background:${banActive?'#2a1018':'#1a1a2e'};color:#e0e0e0;padding:10px;text-align:left;font-weight:900">🚫 Bann-Joker <span style="color:#aaa;font-weight:700">(${banLeft} verfügbar)</span><div style="font-size:.75rem;color:#aaa;margin-top:3px">${banActive ? 'Aktiv: Spiele zum Bannen markieren. Erneut tippen zum Deaktivieren.' : 'Antippen, um die Bann-Auswahl zu öffnen.'}</div></button>` : ''}
         </div>` : ''}
-        ${banLeft > 0 ? `<div style="font-size:.72rem;color:#ffd700;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">1. Spiele bannen</div><div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">${banOptionsHtml}</div>` : ''}
-        <div style="font-size:.72rem;color:#4ecdc4;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">${banLeft > 0 ? '2.' : '1.'} Deinen Favoriten auswählen</div>
-        ${ownFavoriteIsBanned ? '<div style="background:#2a1010;border:1px solid #e94560;color:#ffb3bd;border-radius:10px;padding:10px;margin-bottom:10px;font-size:.82rem;font-weight:800">Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.</div>' : ''}
+        ${banActive ? `<div style="font-size:.72rem;color:#e94560;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">Spiel bannen</div><div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">${banOptionsHtml}</div>` : ''}
+        <div style="font-size:.72rem;color:#4ecdc4;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">Dein Favorit</div>
+        ${ownFavoriteIsBanned || showBanNotice ? '<div style="background:#2a1010;border:1px solid #e94560;color:#ffb3bd;border-radius:10px;padding:10px;margin-bottom:10px;font-size:.82rem;font-weight:800">Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.</div>' : ''}
         <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
           ${options.length ? options.map(g => {
             const selected = selectedGameId === g.id;
-            return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`}"
-              style="position:relative;display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${alreadySaved && !selected ? .7 : 1}">
-              ${selected ? `<div style="position:absolute;right:8px;top:8px;background:#4ecdc4;color:#061313;border-radius:999px;padding:3px 8px;font-size:.68rem;font-weight:900">${useMagnet ? 'Favorit x3' : 'Favorit'}</div>` : ''}
+            const selfBanned = bannedIds.includes(g.id);
+            return `<button data-mobile-vote-option="${smMobileEsc(g.id)}" onclick="${alreadySaved || selfBanned ? '' : `smMobilePickGameVote('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(currentVoteRoundId)}','${smMobileEsc(g.id)}')`}"
+              style="position:relative;display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;text-align:left;border-radius:14px;border:2px solid ${selfBanned?'#e94560':selected?'#ffd700':'rgba(255,255,255,.12)'};background:${selfBanned?'#24242a':selected?'linear-gradient(160deg,#2d2508,#1a1a2e)':'#1a1a2e'};color:#e0e0e0;padding:10px;opacity:${selfBanned ? .48 : (alreadySaved && !selected ? .7 : 1)};filter:${selfBanned?'grayscale(1)':'none'}">
+              ${selfBanned ? '<div style="position:absolute;right:8px;top:8px;background:#e94560;color:#fff;border-radius:999px;padding:3px 8px;font-size:.68rem;font-weight:900">🚫 Gebannt</div>' : selected ? `<div style="position:absolute;right:8px;top:8px;background:#4ecdc4;color:#061313;border-radius:999px;padding:3px 8px;font-size:.68rem;font-weight:900">${useMagnet ? 'Favorit x3' : 'Favorit'}</div>` : ''}
               <div onclick="smMobileOpenGameCoverOverlay('${smMobileEsc(g.id)}',event)" style="width:86px;height:72px;border-radius:10px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;font-size:1.8rem;cursor:zoom-in">
                 ${renderCoverFallbackHtml(g, smMobileEsc)}
               </div>
@@ -7579,6 +7613,9 @@ window.smMobilePickGameBan = function smMobilePickGameBan(sessionId, playerName,
     bans.push(gameId);
   }
   if (bans.includes(window._mobileGameVotes[key])) {
+    delete window._mobileGameVotes[key];
+    if (!window._mobileGameVoteBanNotice) window._mobileGameVoteBanNotice = {};
+    window._mobileGameVoteBanNotice[key] = true;
     showToast('Du kannst nicht für ein Spiel stimmen, das du selbst gebannt hast.');
   }
   renderMobilePlayerView(sessionId, playerName);
@@ -7594,6 +7631,20 @@ window.smMobilePickGameFavorite = function smMobilePickGameFavorite(sessionId, p
     return;
   }
   window._mobileGameVotes[key] = gameId;
+  if (window._mobileGameVoteBanNotice) window._mobileGameVoteBanNotice[key] = false;
+  renderMobilePlayerView(sessionId, playerName);
+};
+
+window.smMobileToggleGameVoteBan = function smMobileToggleGameVoteBan(sessionId, playerName, voteId) {
+  if (!window._mobileGameVoteBanActive) window._mobileGameVoteBanActive = {};
+  if (!window._mobileGameVoteBans) window._mobileGameVoteBans = {};
+  const key = getMobileVoteKey(sessionId, playerName, voteId);
+  const nextActive = !window._mobileGameVoteBanActive[key];
+  window._mobileGameVoteBanActive[key] = nextActive;
+  if (!nextActive) {
+    window._mobileGameVoteBans[key] = [];
+    if (window._mobileGameVoteBanNotice) window._mobileGameVoteBanNotice[key] = false;
+  }
   renderMobilePlayerView(sessionId, playerName);
 };
 
@@ -8123,6 +8174,16 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     );
   }
 
+  function renderGameVoteRouletteCards(entries) {
+    return entries.map(({game:g, playerName, color, voteKey, disabled, jokerBadge, bannedBy}) => `
+      <div class="mk-vote-card ${disabled?'dimmed':''}" data-disabled="${disabled?'1':'0'}" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color};box-shadow:0 0 0 3px ${color}55;${disabled?'filter:grayscale(1);opacity:.42':''}">
+        ${disabled ? '<div class="mk-vote-count" style="font-size:.72rem">🚫 Gebannt</div>' : (jokerBadge ? `<div class="mk-vote-count" style="font-size:.72rem">${esc(jokerBadge)}</div>` : '')}
+        ${disabled && bannedBy ? `<div class="mk-vote-count" style="font-size:.68rem;right:8px;top:40px;background:#e94560">von ${esc(bannedBy)}</div>` : ''}
+        <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
+        <div><div style="font-size:.76rem;color:${color};font-weight:1000;text-transform:uppercase;letter-spacing:.9px;margin-bottom:5px">${esc(playerName)}</div><div class="game-name" style="font-size:1.05rem">${esc(g.name)}</div><div class="game-meta">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div></div>
+      </div>`).join('');
+  }
+
   function renderGameVoteHost() {
     const info = document.getElementById('current-game-info');
     const result = document.getElementById('result-input-area');
@@ -8130,7 +8191,6 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const voted = getGameVoteCount();
     const total = state.players.length;
     const allDone = allGameVotesIn();
-    const entries = getShuffledGameVoteDisplayEntries();
     const waitingRows = state.players.map(p => {
       const done = !!state.currentGameVotes?.[getGameVotePlayerKey(p)];
       return `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface);border-radius:9px">
@@ -8138,18 +8198,6 @@ document.addEventListener('sm-mobile-local-refresh', e => {
         <span style="margin-left:auto;font-weight:800;color:${done?'var(--green)':'var(--muted)'}">${done?'✅ hat abgestimmt':'⏳ wartet noch'}</span>
       </div>`;
     }).join('');
-    const voteCards = entries.map(({game:g, playerName, color, voteKey, disabled, jokerBadge, bannedBy}, i) => `
-      <div id="mk-vote-card-${i}" class="mk-vote-card ${disabled?'dimmed':''}" data-disabled="${disabled?'1':'0'}" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color};box-shadow:0 0 0 3px ${color}55;${disabled?'filter:grayscale(1);opacity:.42':''}">
-        ${disabled ? `<div class="mk-vote-count" style="font-size:.66rem">&#128683; Bann-Joker</div>` : (jokerBadge ? `<div class="mk-vote-count" style="font-size:.66rem">${esc(jokerBadge)}</div>` : '')}
-        ${disabled && bannedBy ? `<div class="mk-vote-count" style="font-size:.62rem;right:8px;top:38px;background:#e94560">🚫 ${esc(bannedBy)}</div>` : ''}
-        <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
-        <div>
-          <div style="font-size:.7rem;color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.9px;margin-bottom:4px">${esc(playerName)}</div>
-          <div class="game-name">${esc(g.name)}</div>
-          <div class="game-meta">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
-        </div>
-      </div>`).join('');
-
     info.innerHTML = `
       <div style="text-align:center;padding:10px 0">
         <div style="font-size:.72rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🏁 Spielwahl-Roulette</div>
@@ -8158,14 +8206,17 @@ document.addEventListener('sm-mobile-local-refresh', e => {
         <div style="display:inline-flex;align-items:center;gap:10px;background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:800;color:${allDone?'var(--green)':'var(--gold)'}">${voted} von ${total} haben gewählt</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">${waitingRows}</div>
-      ${allDone && state._gameVoteRevealShown ? `<div style="margin-top:18px">
-        <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Einzelstimmen, zufällig gemischt</div>
-        <div id="mk-weighted-votes" class="mk-vote-stage">${voteCards}</div>
-      </div>` : allDone ? '<div class="empty-state" style="margin-top:18px"><div class="icon">🃏</div><p>Alle Stimmen sind da. Joker werden gleich aufgedeckt.</p></div>' : ''}
+      ${allDone ? '<div class="empty-state" style="margin-top:18px"><div class="icon">🃏</div><p>Alle Stimmen sind da. Das große Roulette-Fenster wird geöffnet.</p></div>' : ''}
     `;
     result.innerHTML = allDone
       ? '<button class="btn btn-gold" style="width:100%;margin-top:12px" onclick="showGameVoteJokerRevealThenStart()">🏁 Zufallsauswahl starten</button>'
       : '<div class="empty-state"><div class="icon">📱</div><p>Warte auf Handy-Auswahlen</p></div>';
+    if (allDone && !state._gameVoteRevealShown && !state._gameVoteAnimating && !state._gameVoteAutoStartTimer) {
+      state._gameVoteAutoStartTimer = setTimeout(() => {
+        state._gameVoteAutoStartTimer = null;
+        window.showGameVoteJokerRevealThenStart();
+      }, 700);
+    }
   }
   window.renderGameVoteHost = renderGameVoteHost;
 
@@ -8176,11 +8227,14 @@ document.addEventListener('sm-mobile-local-refresh', e => {
         const player = findPlayerByVoteName(r.playerKey || r.playerName);
         const color = getPlayerColorHex(player?.color);
         const items = [];
-        if (r.useMagnet || r.modeJoker === 'magnet') {
-          items.push({emoji:'🧲', name:'Magnet-Joker', playerName:r.playerName, color, detail:'Favorit zählt dreifach'});
-        }
         if ((r.bannedGameIds || []).length) {
-          items.push({emoji:'🚫', name:'Bann-Joker', playerName:r.playerName, color, detail:`${r.bannedGameIds.length} Spiel${r.bannedGameIds.length === 1 ? '' : 'e'} gebannt`});
+          const names = r.bannedGameIds.map(id => state.currentVoteOptions.find(g => g.id === id)?.name).filter(Boolean);
+          const gamesText = names.length < 2 ? (names[0] || 'ein Spiel') : `${names.slice(0, -1).join(', ')} und ${names[names.length - 1]}`;
+          items.push({emoji:'🚫', name:'Bann-Joker', playerName:r.playerName, color, detail:`${r.playerName} hat ${gamesText} gebannt!`});
+        }
+        if (r.useMagnet || r.modeJoker === 'magnet') {
+          const gameName = state.currentVoteOptions.find(g => g.id === r.gameId)?.name || 'den Favoriten';
+          items.push({emoji:'🧲', name:'Magnet-Joker', playerName:r.playerName, color, detail:`${r.playerName} verstärkt ${gameName} mit dem Magnet-Joker!`});
         }
         return items;
       });
@@ -8189,42 +8243,23 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   function showGameVoteJokerRevealThenStart() {
     if (!allGameVotesIn()) return;
     if (state._gameVoteAnimating) return;
-    if (state._gameVoteRevealShown) {
-      window.runMarioKartSelectionAnimation();
-      return;
-    }
+    if (state._gameVoteRevealShown) return;
+    if (state._gameVoteAutoStartTimer) clearTimeout(state._gameVoteAutoStartTimer);
+    state._gameVoteAutoStartTimer = null;
     state._gameVoteRevealShown = true;
     const items = getGameVoteJokerRevealItems();
-    if (!items.length) {
-      window.renderGameVoteHost();
-      window.runMarioKartSelectionAnimation();
-      return;
-    }
-    const info = document.getElementById('current-game-info');
+    const modal = document.getElementById('modal-game-vote-roulette');
+    const stage = document.getElementById('game-vote-roulette-stage');
     const result = document.getElementById('result-input-area');
-    if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Roulette startet gleich...</p></div>';
-    if (info) {
-      info.innerHTML = `
-        <div style="min-height:320px;display:flex;align-items:center;justify-content:center;text-align:center">
-          <div style="width:100%;background:linear-gradient(160deg,#15152a,#211536);border:2px solid var(--gold);border-radius:20px;padding:28px 18px;box-shadow:0 24px 80px rgba(0,0,0,.45)">
-            <div style="font-size:.78rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Joker-Aufdeckung</div>
-            <div style="font-size:1.45rem;font-weight:1000;margin-bottom:18px">Diese Auswahl-Joker wurden eingesetzt</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
-              ${items.map(item => `
-                <div style="border:2px solid ${item.color};border-radius:14px;padding:14px;background:rgba(255,255,255,.06);box-shadow:0 0 0 3px ${item.color}33">
-                  <div style="font-size:2.4rem;line-height:1">${item.emoji}</div>
-                  <div style="margin-top:8px;font-weight:1000;color:${item.color}">${esc(item.playerName)}</div>
-                  <div style="font-weight:900;margin-top:3px">${esc(item.name)}</div>
-                  <div style="font-size:.82rem;color:var(--muted);margin-top:5px">${esc(item.detail)}</div>
-                </div>`).join('')}
-            </div>
-          </div>
-        </div>`;
-    }
+    if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Roulette läuft im großen Fenster...</p></div>';
+    if (!modal || !stage) return;
+    modal.classList.add('open');
+    stage.innerHTML = `<div class="game-vote-roulette-heading">Joker-Aufdeckung</div><div class="game-vote-roulette-title" id="game-vote-roulette-title">${items.length ? 'Diese Auswahl-Joker wurden eingesetzt' : 'Keine Auswahl-Joker eingesetzt'}</div><div class="game-vote-reveal-list">${items.length ? items.map((item, index) => `<div class="game-vote-reveal-row" style="--reveal-color:${item.color};--reveal-glow:${item.color}22;animation-delay:${index * 120}ms"><div class="game-vote-reveal-emoji">${item.emoji}</div><div><div class="game-vote-reveal-player">${esc(item.playerName)}</div><div class="game-vote-reveal-text"><strong>${esc(item.name)}:</strong> ${esc(item.detail)}</div></div></div>`).join('') : '<div style="margin:auto;text-align:center;font-size:clamp(3rem,8vw,7rem)">🎲</div>'}</div>`;
     setTimeout(() => {
-      window.renderGameVoteHost();
+      const entries = getShuffledGameVoteDisplayEntries();
+      stage.innerHTML = `<div class="game-vote-roulette-heading">Spielwahl-Roulette</div><div class="game-vote-roulette-title" id="game-vote-roulette-title">Welches Spiel wird gewählt?</div><div class="mk-vote-stage game-vote-roulette-cards">${renderGameVoteRouletteCards(entries)}</div>`;
       window.runMarioKartSelectionAnimation();
-    }, 4200);
+    }, items.length ? 4200 : 1800);
   }
   window.showGameVoteJokerRevealThenStart = showGameVoteJokerRevealThenStart;
 
@@ -8235,6 +8270,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const entries = getShuffledGameVoteDisplayEntries();
     const activeEntries = entries.filter(e => !e.disabled);
     if (!activeEntries.length) {
+      document.getElementById('modal-game-vote-roulette')?.classList.remove('open');
       window.restartGameVoteRound();
       return;
     }
@@ -8251,7 +8287,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const sequence = [];
     for (let i = 0; i < tickCount - 1; i++) sequence.push(pickRandom(activeEntries));
     sequence.push(winnerEntry);
-    const cards = [...document.querySelectorAll('.mk-vote-card')];
+    const cards = [...document.querySelectorAll('#game-vote-roulette-stage .mk-vote-card')];
     const result = document.getElementById('result-input-area');
     if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Auswahl läuft...</p></div>';
     if (!cards.length) { window.finishMarioKartSelection(winnerEntry.gameId, winnerEntry); return; }
@@ -8281,7 +8317,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const winnerEntry = selection && typeof selection === 'object' ? selection : null;
     const gameId = winnerEntry?.gameId || selection;
     const g = winnerEntry?.game || state.games.find(x => x.id === gameId) || state.currentVoteOptions.find(x => x.id === gameId);
-    const cards = [...document.querySelectorAll('.mk-vote-card')];
+    const cards = [...document.querySelectorAll('#game-vote-roulette-stage .mk-vote-card')];
     const winnerColor = winnerEntry?.color || '#ffd700';
     cards.forEach(card => {
       const isDisabled = card.dataset.disabled === '1';
@@ -8290,19 +8326,19 @@ document.addEventListener('sm-mobile-local-refresh', e => {
       card.classList.toggle('dimmed', isDisabled || !winner);
       card.classList.toggle('active', winner && !isDisabled);
     });
-    const info = document.getElementById('current-game-info');
-    if (info && g) {
-      info.insertAdjacentHTML('beforeend', `
+    const stage = document.getElementById('game-vote-roulette-stage');
+    if (stage && g) {
+      stage.innerHTML = `<div class="game-vote-roulette-heading">Gewählt</div>
         <div class="mk-winner-moment" style="border-color:${winnerColor};box-shadow:0 20px 70px rgba(0,0,0,.35),0 0 0 3px ${winnerColor}55">
           <div style="font-size:.72rem;color:${winnerColor};font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">${esc(winnerEntry?.playerName || 'Ausgewählt')}</div>
           <div class="mk-winner-cover" style="box-shadow:0 0 0 3px ${winnerColor}55">${renderCoverFallbackHtml(g)}</div>
           <div style="font-size:1.45rem;font-weight:900">${esc(g.name)}</div>
           <div style="font-size:.82rem;color:var(--muted);margin-top:5px">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
-        </div>`);
+        </div>`;
     }
     playTone(784, .18, 'triangle', .16, 0);
     playTone(1047, .28, 'triangle', .14, .16);
-    setTimeout(() => window.finishMarioKartSelection(gameId, winnerEntry), 1500);
+    setTimeout(() => window.finishMarioKartSelection(gameId, winnerEntry), 1800);
   }
   window.showMarioKartWinnerMoment = showMarioKartWinnerMoment;
 
@@ -8330,6 +8366,11 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     state._gameVoteRevealShown = false;
     state._setupPhase = 'marathon';
     state._gameVoteAnimating = false;
+    if (state._gameVoteAutoStartTimer) clearTimeout(state._gameVoteAutoStartTimer);
+    state._gameVoteAutoStartTimer = null;
+    document.getElementById('modal-game-vote-roulette')?.classList.remove('open');
+    const rouletteStage = document.getElementById('game-vote-roulette-stage');
+    if (rouletteStage) rouletteStage.innerHTML = '';
     state.activeJokers = {};
     resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
     renderCurrentGame();
@@ -8341,6 +8382,13 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     saveCurrentToLS();
   }
   window.finishMarioKartSelection = finishMarioKartSelection;
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && document.getElementById('modal-game-vote-roulette')?.classList.contains('open')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
 
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('button[onclick="startSecretGoals()"], button[onclick="smStartMarathonAfterPrivateGoals()"]')
