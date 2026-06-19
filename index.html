@@ -1065,6 +1065,21 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   <button class="btn btn-primary" style="width:100%" onclick="closeModal('modal-goal-review');closeModal('modal-goal-review-warn')">✅ Gesehen – Fenster schließen</button>
 </div>
 </div>
+<div class="modal-overlay" id="modal-host-joker-warning">
+<div class="modal" style="max-width:440px;text-align:center;border:2px solid var(--gold)">
+  <div style="font-size:3rem;margin-bottom:10px">👁</div>
+  <h3 style="font-size:1.25rem">Private Notfallansicht</h3>
+  <p style="font-size:.95rem;line-height:1.6">Nur <strong id="host-joker-warning-player" style="color:var(--gold)"></strong> darf jetzt auf den Bildschirm schauen.</p>
+  <div class="modal-actions"><button class="btn btn-ghost" onclick="closeHostJokerEmergency()">Abbrechen</button><button class="btn btn-gold" onclick="showHostJokerEmergency()">Joker anzeigen</button></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="modal-host-joker-emergency" onclick="if(event.target===this) closeHostJokerEmergency()">
+<div class="modal" style="max-width:760px">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><h3 style="margin:0;flex:1">👁 Private Joker-Notfallansicht</h3><button class="btn btn-ghost btn-sm" onclick="closeHostJokerEmergency()">✕ Schließen</button></div>
+  <div id="host-joker-emergency-content"></div>
+</div>
+</div>
 <div class="modal-overlay" id="modal-goals-reveal">
 <div class="modal" style="max-width:520px">
   <h3>🎯 Geheimziele – Auflösung!</h3>
@@ -2919,6 +2934,50 @@ function getCurrentGameEntry(source = state) {
   return source?.plan?.[source.currentIdx] || null;
 }
 
+function getActuallyCurrentGame(source = state) {
+  const entry = getCurrentGameEntry(source);
+  return entry ? (source.games || []).find(game => game.id === entry.gameId) || null : null;
+}
+
+function canUseTwistJoker(currentGame = getActuallyCurrentGame(state), source = state) {
+  const entry = getCurrentGameEntry(source);
+  const phase = source === state ? state._setupPhase : source?.phase;
+  return !!currentGame
+    && !!entry
+    && currentGame.id === entry.gameId
+    && currentGame.type === '2v2'
+    && !entry.done
+    && phase === 'marathon'
+    && !source?._marathonFinished
+    && !source?.marathonFinished
+    && !isTipsterChoosing(source);
+}
+
+function getJokerAvailability(playerName, jokerId, source = state) {
+  const joker = source?.jokers?.[playerName]?.find(item => item.id === jokerId);
+  if (!joker) return {allowed:false, reason:'Dieser Joker gehört dem Spieler nicht.'};
+  if (joker.used) return {allowed:false, reason:'Bereits benutzt.'};
+  if (isTipsterChoosing(source)) return {allowed:false, reason:'Während einer Tippabgabe sind andere Joker gesperrt.'};
+  if (jokerId === 'underdog') return {allowed:false, reason:'Wird automatisch ausgelöst.'};
+  if (jokerId === 'veto') return {allowed:false, reason:'Wird erst bei der abschließenden Spielauswahl verwendet.'};
+  if (jokerId === 'magnet' || jokerId === 'ban') return {allowed:false, reason:'Nur während der Spielwahl am Handy verfügbar.'};
+  if (jokerId === 'revenge') return canUseRevengeJoker(source)
+    ? {allowed:true, reason:''}
+    : {allowed:false, reason:'Erst nach dem ersten abgeschlossenen Spiel verfügbar.'};
+
+  const entry = getCurrentGameEntry(source);
+  const currentGame = getActuallyCurrentGame(source);
+  const phase = source === state ? state._setupPhase : source?.phase;
+  if (jokerId === 'twist') return canUseTwistJoker(currentGame, source)
+    ? {allowed:true, reason:''}
+    : {allowed:false, reason:'Nur bei einem Team-gegen-Team-Spiel verfügbar.'};
+  if (!entry || !currentGame || entry.done || phase !== 'marathon' || source?._marathonFinished || source?.marathonFinished) {
+    return {allowed:false, reason:'Nur bei einem aktuell ausgewählten, noch nicht beendeten Spiel verfügbar.'};
+  }
+  if (jokerId === 'skip' && !shouldGiveFreeSkip(source)) return {allowed:false, reason:'Nur im Zufallsmodus verfügbar.'};
+  return {allowed:true, reason:''};
+}
+
 function getTipsterBonusForGameType(type) {
   return type === 'ffa' ? 4 : 2;
 }
@@ -2938,9 +2997,11 @@ function startPendingTipster(playerName) {
     actionId: uid(),
     ts: Date.now()
   };
-  showToast(`🔮 ${playerName} hat den Tipp-Joker gezündet.`);
+  showToast(`🔮 ${playerName} zieht seinen Tipp-Joker und stimmt nun ab!`);
   renderCurrentGame();
   renderJokerArea();
+  renderJokerStatusBar();
+  updateProgressBar();
   saveCurrentToLS();
   return true;
 }
@@ -2957,9 +3018,11 @@ function lockPendingTipsterPick(playerName, pickedPlayerName) {
   pending.lockedAt = Date.now();
   const pj = state.jokers?.[playerName]?.find(j => j.id === 'tipster');
   if (pj) pj.used = true;
-  showToast(`🔮 ${playerName} hat den Tipp abgegeben.`);
+  showToast(`🔮 ${playerName} hat seinen geheimen Tipp abgegeben.`);
   renderCurrentGame();
   renderJokerArea();
+  renderJokerStatusBar();
+  updateProgressBar();
   saveCurrentToLS();
   return true;
 }
@@ -3232,18 +3295,23 @@ function updateProgressBar() {
     if (isTipsterChoosing()) {
       btn.textContent = '🔮 Tippabgabe läuft';
       btn.className = 'btn btn-secondary';
+      btn.disabled = true;
     } else if (isMarioKartMode() && state._setupPhase === 'gameVote') {
       btn.textContent = '📱 Spielauswahl läuft';
       btn.className = 'btn btn-secondary';
+      btn.disabled = true;
     } else if (isMarioKartMode()) {
       btn.textContent = getMarioKartVoteCandidates().length ? '🏁 Nächstes Spiel wählen' : '🏆 Turnier beenden';
       btn.className = getMarioKartVoteCandidates().length ? 'btn btn-primary' : 'btn btn-gold';
+      btn.disabled = false;
     } else if (remaining === 0) {
       btn.textContent = '🏆 Turnier beenden';
       btn.className = 'btn btn-gold';
+      btn.disabled = false;
     } else {
       btn.textContent = '▶️ Nächstes Spiel';
       btn.className = 'btn btn-primary';
+      btn.disabled = false;
     }
   }
 }
@@ -3332,14 +3400,17 @@ function renderCurrentGame() {
 
   const resultArea = document.getElementById('result-input-area');
   if (isTipsterChoosing()) {
+    const tipsterPlayer = state.players.find(p => p.name === state.pendingTipster.playerName);
     resultArea.innerHTML = `
       <div style="text-align:center;padding:18px;border-radius:14px;background:rgba(255,215,0,.1);border:2px solid var(--gold)">
         <div style="font-size:2.4rem;margin-bottom:8px">🔮</div>
-        <div style="font-size:1.05rem;font-weight:900;color:var(--gold)">${esc(state.pendingTipster.playerName)} gibt gerade seinen Tipp ab</div>
-        <div style="font-size:.85rem;color:var(--muted);margin-top:6px">Spielstart und Joker sind bis zur Tippabgabe gesperrt.</div>
+        <div style="font-size:1.08rem;font-weight:900"><span class="chip ${tipsterPlayer?.color || ''} active" style="cursor:default;margin-right:5px">${esc(state.pendingTipster.playerName)}</span> zieht seinen <strong style="color:var(--gold)">Tipp-Joker</strong> und stimmt nun ab!</div>
+        <div style="font-size:.85rem;color:var(--muted);margin-top:10px">Das Spiel kann erst gestartet werden, wenn ${esc(state.pendingTipster.playerName)} seinen Tipp bestätigt hat.</div>
       </div>`;
   } else {
-    resultArea.innerHTML = buildResultInput(g, entry);
+    const lockedTip = state.pendingTipster?.status === 'locked' && state.pendingTipster.gameIndex === state.currentIdx && state.pendingTipster.gameId === entry.gameId;
+    const tipsterPlayer = lockedTip ? state.players.find(p => p.name === state.pendingTipster.playerName) : null;
+    resultArea.innerHTML = `${lockedTip ? `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:12px;border-radius:12px;background:rgba(78,205,196,.1);border:1px solid var(--green)"><span style="font-size:1.8rem">🔮</span><div><span class="chip ${tipsterPlayer?.color || ''} active" style="cursor:default">${esc(state.pendingTipster.playerName)}</span><div style="font-size:.84rem;font-weight:800;color:var(--green);margin-top:6px">hat seinen geheimen Tipp abgegeben.</div></div></div>` : ''}${buildResultInput(g, entry)}`;
   }
 }
 
@@ -3685,8 +3756,9 @@ function showGoalReview() {
 }
 
 function openJokerModal(playerName, jokerId) {
-  if (isTipsterChoosing()) {
-    showToast(`${state.pendingTipster.playerName} gibt gerade den Tipp ab. Joker sind kurz gesperrt.`);
+  const availability = getJokerAvailability(playerName, jokerId, state);
+  if (!availability.allowed) {
+    showToast(availability.reason);
     return;
   }
   if (jokerId === 'skip' && !shouldGiveFreeSkip()) {
@@ -3722,6 +3794,12 @@ function openJokerModal(playerName, jokerId) {
 function confirmJoker() {
   const p = pendingJokerPlayer, j = pendingJokerId;
   if (!p||!j) return;
+  const availability = getJokerAvailability(p, j, state);
+  if (!availability.allowed) {
+    showToast(availability.reason);
+    closeModal('modal-joker');
+    return;
+  }
 
   // Block non-revanche jokers when marathon is finished
   const remaining = state.plan.filter(e=>!e.done).length;
@@ -3731,7 +3809,12 @@ function confirmJoker() {
   }
 
   if (j==='tipster') {
-    showToast('Tipp-Joker bitte am Handy einsetzen.');
+    const pickedPlayerName = document.getElementById('tipster-pick')?.value;
+    if (!pickedPlayerName || !startPendingTipster(p) || !lockPendingTipsterPick(p, pickedPlayerName)) {
+      showToast('Der geheime Tipp konnte nicht gespeichert werden.');
+    } else if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') {
+      fbPushState();
+    }
     closeModal('modal-joker');
     return;
   }
@@ -3758,19 +3841,12 @@ function confirmJoker() {
     const entry = state.plan[state.currentIdx];
     if (entry) {
       const g = state.games.find(g=>g.id===entry.gameId);
-      if (g?.type==='2v2'||g?.type==='3v1') {
+      if (canUseTwistJoker(g, state)) {
         closeModal('modal-joker');
         openTwistAssignment(p, entry, g);
-        // Mark joker used before returning
-        const pj2 = state.jokers[p]?.find(jj=>jj.id===j);
-        if (pj2) pj2.used = true;
-        soundJoker();
-        haptic([50,30,100,30,150]);
-        renderAll();
-        saveCurrentToLS();
         return;
       } else {
-        showToast('Nur bei Team vs Team oder 1 gegen Alle!');
+        showToast('Nur bei einem Team-gegen-Team-Spiel verfügbar.');
         closeModal('modal-joker');
         return;
       }
@@ -3822,6 +3898,7 @@ function confirmJoker() {
     nextGame();
     renderAll();
     saveCurrentToLS();
+    if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
     return;
   }
 
@@ -3832,6 +3909,7 @@ function confirmJoker() {
   closeModal('modal-joker');
   renderAll();
   saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4425,7 +4503,13 @@ function switchTab(id) {
 }
 
 function openModal(id) { document.getElementById(id)?.classList.add('open'); }
-function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
+function closeModal(id) {
+  document.getElementById(id)?.classList.remove('open');
+  if (id === 'modal-host-joker-emergency') {
+    const content = document.getElementById('host-joker-emergency-content');
+    if (content) content.innerHTML = '';
+  }
+}
 
 function showConfirm(title, msg, onOk, okLabel = 'Bestätigen') {
   document.getElementById('confirm-title').textContent = title;
@@ -5216,60 +5300,59 @@ function clearJokerImg(i) {
 }
 
 // ── Twist: manual team assignment ────────────────────────────
-let twistEntry = null, twistGame = null;
+let twistEntry = null, twistGame = null, twistPlayerName = null;
 
 function openTwistAssignment(playerName, entry, g) {
-  twistEntry = entry; twistGame = g;
-  const c = document.getElementById('twist-assign-content');
-  if (g.type === '2v2') {
-    c.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase">🔴 Team Rot</div>
-          ${state.players.map(p=>`
-            <label style="display:flex;align-items:center;gap:8px;padding:6px;background:var(--surface);border-radius:6px;margin-bottom:4px;cursor:pointer">
-              <input type="checkbox" name="twist-rot" value="${esc(p.name)}" style="accent-color:var(--accent)"> ${esc(p.name)}
-            </label>`).join('')}
-        </div>
-        <div>
-          <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase">🔵 Team Blau</div>
-          <p style="font-size:.75rem;color:var(--muted);font-style:italic">Alle nicht bei Rot = Blau</p>
-        </div>
-      </div>`;
-  } else { // 3v1
-    c.innerHTML = `
-      <div class="form-group">
-        <label>⚔️ Wer spielt Solo (1 gegen Alle)?</label>
-        <select id="twist-solo-pick" style="width:100%">
-          ${state.players.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('')}
-        </select>
-      </div>`;
+  if (!canUseTwistJoker(g, state)) {
+    showToast('Nur bei einem Team-gegen-Team-Spiel verfügbar.');
+    return;
   }
+  twistEntry = entry; twistGame = g; twistPlayerName = playerName;
+  const c = document.getElementById('twist-assign-content');
+  c.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase">🔴 Team Rot</div>
+        ${state.players.map(p=>`
+          <label style="display:flex;align-items:center;gap:8px;padding:6px;background:var(--surface);border-radius:6px;margin-bottom:4px;cursor:pointer">
+            <input type="checkbox" name="twist-rot" value="${esc(p.name)}" style="accent-color:var(--accent)"> ${esc(p.name)}
+          </label>`).join('')}
+      </div>
+      <div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase">🔵 Team Blau</div>
+        <p style="font-size:.75rem;color:var(--muted);font-style:italic">Alle nicht bei Rot = Blau</p>
+      </div>
+    </div>`;
   openModal('modal-twist-assign');
 }
 
 function confirmTwistAssignment() {
   if (!twistEntry || !twistGame) return;
-  if (twistGame.type === '2v2') {
-    const teamA = [...document.querySelectorAll('input[name="twist-rot"]:checked')].map(el=>el.value);
-    const teamB = state.players.map(p=>p.name).filter(n=>!teamA.includes(n));
-    if (teamA.length === 0) { showToast('Team Rot braucht mind. 1 Spieler!'); return; }
-    if (teamB.length === 0) { showToast('Team Blau braucht mind. 1 Spieler!'); return; }
-    // For 2v2, enforce equal teams if 4 players
-    if (state.players.length === 4 && teamA.length !== 2) {
-      showToast('Bei 4 Spielern müssen die Teams je 2 Spieler haben!'); return;
-    }
-    twistEntry.teams = {teamA, teamB};
-  } else if (twistGame.type === '3v1') {
-    const solo = document.getElementById('twist-solo-pick')?.value;
-    if (!solo) { showToast('Bitte einen Solo-Spieler wählen!'); return; }
-    const team = state.players.map(p=>p.name).filter(n=>n!==solo);
-    if (team.length < 1) { showToast('Es braucht mind. 2 Spieler für 1-gegen-Alle!'); return; }
-    twistEntry.teams = {solo, team};
+  const availability = getJokerAvailability(twistPlayerName, 'twist', state);
+  if (!availability.allowed || !canUseTwistJoker(twistGame, state)) {
+    showToast(availability.reason || 'Nur bei einem Team-gegen-Team-Spiel verfügbar.');
+    closeModal('modal-twist-assign');
+    twistEntry = null; twistGame = null; twistPlayerName = null;
+    return;
   }
+  const teamA = [...document.querySelectorAll('input[name="twist-rot"]:checked')].map(el=>el.value);
+  const teamB = state.players.map(p=>p.name).filter(n=>!teamA.includes(n));
+  if (teamA.length === 0) { showToast('Team Rot braucht mind. 1 Spieler!'); return; }
+  if (teamB.length === 0) { showToast('Team Blau braucht mind. 1 Spieler!'); return; }
+  if (state.players.length === 4 && teamA.length !== 2) {
+    showToast('Bei 4 Spielern müssen die Teams je 2 Spieler haben!'); return;
+  }
+  twistEntry.teams = {teamA, teamB};
+  const joker = state.jokers?.[twistPlayerName]?.find(item => item.id === 'twist');
+  if (joker) joker.used = true;
   closeModal('modal-twist-assign');
-  renderCurrentGame();
+  soundJoker();
+  haptic([50,30,100,30,150]);
+  renderAll();
+  saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
   showToast('🎭 Teams neu zugewiesen!');
+  twistEntry = null; twistGame = null; twistPlayerName = null;
 }
 
 // ── Joker-Meister text formatting ────────────────────────────
@@ -6625,19 +6708,21 @@ function fbGuestRequestJoker(sessionId, playerName, jokerId) {
       showToast('Joker erst nach Marathonstart möglich!');
       return;
     }
-    if (jokerId === 'revenge' && !canUseRevengeJoker(data)) {
-      showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
+    const syncedPlayer = findPlayerByVoteName(playerName, data.players || []);
+    const availability = syncedPlayer ? getJokerAvailability(syncedPlayer.name, jokerId, data) : {allowed:false, reason:'Unbekannter Spieler.'};
+    if (!availability.allowed) {
+      showToast(availability.reason);
       return;
     }
     if (jokerId === 'tipster') {
       ref.child('guestActions').push({
-        type:'startTipster', playerName, ts:Date.now()
+        type:'startTipster', playerName:syncedPlayer.name, ts:Date.now()
       });
       showToast('🔮 Tipp-Joker gestartet.');
       return;
     }
     ref.child('guestActions').push({
-      type:'useJoker', playerName, jokerId, ts:Date.now()
+      type:'useJoker', playerName:syncedPlayer.name, jokerId, ts:Date.now()
     });
     showToast('📱 Joker-Anfrage gesendet!');
   }).catch(() => showToast('Joker-Anfrage konnte nicht gesendet werden.'));
@@ -7070,10 +7155,10 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       const p = findPlayerByVoteName(action.playerName);
       let ignored = '';
       if (!p) ignored = 'unknown player';
-      else if (state._setupPhase !== 'marathon' || state.currentIdx < 0) ignored = 'not in active game';
-      else if (state.pendingTipster) ignored = 'another tipster is active';
-      else if (!playerOwnsJoker(p.name, 'tipster')) ignored = 'tipster not owned';
-      else if (state.jokers?.[p.name]?.find(j => j.id === 'tipster')?.used) ignored = 'tipster already used';
+      else {
+        const availability = getJokerAvailability(p.name, 'tipster', state);
+        if (!availability.allowed) ignored = availability.reason;
+      }
       if (ignored) {
         console.warn('[tipster ignored]', ignored, action);
         fbPushState();
@@ -7096,25 +7181,16 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       return;
     }
     if (action.type === 'useJoker') {
-      if (isTipsterChoosing()) {
-        showToast(`${state.pendingTipster.playerName} gibt gerade den Tipp ab. Joker sind kurz gesperrt.`);
+      const p = findPlayerByVoteName(action.playerName);
+      const availability = p ? getJokerAvailability(p.name, action.jokerId, state) : {allowed:false, reason:'Unbekannter Spieler.'};
+      if (!availability.allowed) {
+        console.warn('[joker rejected]', availability.reason, action);
+        showToast(availability.reason);
         markProcessed();
         return;
       }
-      if (action.jokerId === 'skip' && !shouldGiveFreeSkip()) {
-        console.warn('[joker rejected]', 'skip outside random mode', action);
-        showToast('Skip gibt es nur im Zufallsmodus.');
-        markProcessed();
-        return;
-      }
-      if (action.jokerId === 'revenge' && !canUseRevengeJoker()) {
-        console.warn('[joker rejected]', 'revenge before first completed game', action);
-        showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
-        markProcessed();
-        return;
-      }
-      openJokerModal(action.playerName, action.jokerId);
-      showToast(`📱 ${action.playerName} möchte Joker einsetzen!`);
+      openJokerModal(p.name, action.jokerId);
+      showToast(`📱 ${p.name} möchte Joker einsetzen!`);
       markProcessed();
       return;
     }
@@ -7406,7 +7482,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
         <div style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center">
           <div style="width:100%;background:#1a1a2e;border:2px solid #ffd700;border-radius:18px;padding:26px 16px">
             <div style="font-size:3rem;line-height:1;margin-bottom:12px">🔮</div>
-            <div style="font-size:1.15rem;font-weight:900;color:#ffd700">${smMobileEsc(pendingTipster.playerName)} gibt gerade seinen Tipp ab</div>
+            <div style="font-size:1.15rem;font-weight:900;color:#ffd700">🔮 ${smMobileEsc(pendingTipster.playerName)} zieht seinen Tipp-Joker und stimmt nun ab!</div>
             <div style="font-size:.86rem;color:#aaa;margin-top:8px;line-height:1.45">Joker sind kurz gesperrt. Danach geht es automatisch weiter.</div>
           </div>
         </div>`;
@@ -7440,12 +7516,14 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
           const revengeBlocked = j.id === 'revenge' && !canUseRevenge;
           const modeOnlyBlocked = isSelectionOnlyJoker(j.id);
           const tipsterBlocked = j.id === 'tipster' && !!data.pendingTipster;
-          const canUseThisJoker = !j.used && j.id !== 'underdog' && canUseJokers && !revengeBlocked && !modeOnlyBlocked && !tipsterBlocked;
-          const blockedLabel = tipsterBlocked ? 'Tipp läuft<br>bereits' : revengeBlocked ? 'Erst nach<br>dem ersten Spiel' : modeOnlyBlocked ? 'Nur in der<br>Spielauswahl' : 'Erst nach<br>Start';
-          return `<div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used?.5:1};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'};cursor:pointer">
+          const availability = getJokerAvailability(playerName, j.id, data);
+          const canUseThisJoker = availability.allowed && !j.used && j.id !== 'underdog' && canUseJokers && !revengeBlocked && !modeOnlyBlocked && !tipsterBlocked;
+          const blockedLabel = availability.reason || (tipsterBlocked ? 'Tipp läuft bereits' : revengeBlocked ? 'Erst nach dem ersten Spiel' : modeOnlyBlocked ? 'Nur in der Spielauswahl' : 'Erst nach Start');
+          const twistBlocked = j.id === 'twist' && !availability.allowed;
+          return `<div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used || twistBlocked ? .5 : 1};filter:${twistBlocked?'grayscale(1)':'none'};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'};cursor:pointer">
             <span style="width:44px;height:58px;border-radius:8px;overflow:hidden;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;color:#111">${smJokerVisualHtml(jd,'1.6rem')}</span>
             <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.88rem">${smMobileEsc(jd.name)}</div><div style="font-size:.72rem;color:#888;margin-top:2px">${j.used?'✓ Bereits genutzt':smMobileEsc(jd.desc)}</div></div>
-            ${canUseThisJoker ? `<button onclick="event.stopPropagation();fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>` : (!j.used && j.id !== 'underdog' && (!canUseJokers || revengeBlocked || modeOnlyBlocked)) ? `<span style="font-size:.7rem;color:#888;flex-shrink:0;text-align:right">${blockedLabel}</span>` : j.id==='underdog' ? `<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>` : ''}
+            ${canUseThisJoker ? `<button onclick="event.stopPropagation();fbGuestRequestJoker('${smMobileEsc(sessionId)}','${smMobileEsc(playerName)}','${smMobileEsc(j.id)}')" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:8px 14px;font-weight:800;font-size:.8rem;flex-shrink:0">Einsetzen</button>` : (!j.used && j.id !== 'underdog') ? `<span style="max-width:150px;font-size:.68rem;color:#aaa;flex-shrink:0;text-align:right;line-height:1.3">${smMobileEsc(blockedLabel)}</span>` : j.id==='underdog' ? `<span style="font-size:.7rem;color:#888;flex-shrink:0">Auto</span>` : ''}
           </div>`;
         }).join('') : '<div style="color:#888;font-size:.85rem;text-align:center;padding:12px">Warte auf Start...</div>'}
       </div>
@@ -7847,6 +7925,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
             return `<div style="background:var(--surface);border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px">
               <span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}</span>
               <span style="margin-left:auto;font-size:.78rem;color:var(--muted)">${used}/${total} genutzt</span>
+              <button class="btn btn-ghost btn-sm" onclick="openHostJokerWarning('${esc(p.name)}')">👁 Joker anschauen</button>
             </div>`;
           }).join('')}
         </div>
@@ -7858,6 +7937,67 @@ document.addEventListener('sm-mobile-local-refresh', e => {
           Wenn jemand einen Joker nutzen möchte, klickt er auf dem Handy auf „Einsetzen“. Am Hauptgerät erscheint dann die Bestätigung.
         </p>
       </div>`;
+  };
+
+  let hostJokerEmergencyPlayer = null;
+
+  window.openHostJokerWarning = function openHostJokerWarning(playerName) {
+    const player = state.players.find(p => p.name === playerName);
+    if (!player) return;
+    closeHostJokerEmergency();
+    hostJokerEmergencyPlayer = player.name;
+    const label = document.getElementById('host-joker-warning-player');
+    if (label) {
+      label.textContent = player.name;
+      label.className = `chip ${player.color} active`;
+    }
+    openModal('modal-host-joker-warning');
+  };
+
+  window.showHostJokerEmergency = function showHostJokerEmergency() {
+    const player = state.players.find(p => p.name === hostJokerEmergencyPlayer);
+    const content = document.getElementById('host-joker-emergency-content');
+    if (!player || !content) return closeHostJokerEmergency();
+    const jokers = state.jokers?.[player.name] || [];
+    content.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span class="chip ${player.color} active" style="cursor:default">${esc(player.name)}</span><span style="font-size:.78rem;color:var(--muted)">Nur die Joker dieses Spielers sind sichtbar.</span></div>
+      <div class="joker-grid">
+        ${jokers.map(joker => {
+          const def = getJokerDef(joker.id) || {icon:'🃏',name:joker.id,desc:''};
+          const availability = getJokerAvailability(player.name, joker.id, state);
+          const uses = (joker.id === 'magnet' || joker.id === 'ban')
+            ? (state.jokerUses?.[getGameVotePlayerKey(player)]?.[joker.id] ?? getModeJokerInitialUses(joker.id))
+            : null;
+          const modeText = joker.id === 'magnet' || joker.id === 'ban' ? 'Nur im Spielwahl-Roulette' : joker.id === 'skip' ? 'Nur im Zufallsmodus' : joker.id === 'twist' ? 'Nur bei Team gegen Team (2v2)' : 'Im aktuellen Spiel';
+          return `<div class="joker-card ${joker.id==='skip'?'joker-skip':''} ${joker.used?'joker-used':''}" style="height:auto;min-height:300px;aspect-ratio:auto">
+            ${joker.used ? '<span class="joker-badge">✓ Genutzt</span>' : ''}
+            <div class="joker-visual" onclick="openJokerLightbox('${esc(joker.id)}',event)" style="cursor:pointer">${smJokerVisualHtml(def,'3rem')}</div>
+            <div class="joker-footer"><div class="joker-name">${esc(def.name)}</div><div class="joker-desc">${esc(def.desc)}</div><div style="font-size:.68rem;color:#666;margin-top:6px"><strong>Modus:</strong> ${esc(modeText)}</div>${uses !== null ? `<div style="font-size:.72rem;font-weight:800;color:#7a5500;margin-top:5px">Verbleibende Einsätze: ${uses}</div>` : ''}<div style="font-size:.7rem;font-weight:800;color:${availability.allowed?'#16856f':'#b3263e'};margin-top:7px">${availability.allowed?'✓ Verfügbar':`Gesperrt: ${esc(availability.reason)}`}</div></div>
+            ${availability.allowed ? `<button class="joker-use-btn" onclick="hostUseJokerEmergency('${esc(player.name)}','${esc(joker.id)}')">Manuell einsetzen</button>` : ''}
+          </div>`;
+        }).join('') || '<div class="empty-state"><div class="icon">🃏</div><p>Keine Joker vorhanden.</p></div>'}
+      </div>`;
+    closeModal('modal-host-joker-warning');
+    openModal('modal-host-joker-emergency');
+  };
+
+  window.closeHostJokerEmergency = function closeHostJokerEmergency() {
+    closeModal('modal-host-joker-warning');
+    closeModal('modal-host-joker-emergency');
+    const content = document.getElementById('host-joker-emergency-content');
+    if (content) content.innerHTML = '';
+    hostJokerEmergencyPlayer = null;
+  };
+
+  window.hostUseJokerEmergency = function hostUseJokerEmergency(playerName, jokerId) {
+    const availability = getJokerAvailability(playerName, jokerId, state);
+    if (!availability.allowed) {
+      showToast(availability.reason);
+      closeHostJokerEmergency();
+      return;
+    }
+    closeHostJokerEmergency();
+    openJokerModal(playerName, jokerId);
   };
 
   function smAssignSecretGoalsSilently() {
