@@ -1416,6 +1416,12 @@ let state = {
   giftedJokers:{},
   postGameWindow:false,
   _processedRevengeActions:{},
+  currentGameStarted:false,
+  preGameWindow:false,
+  gamePhase:'idle',
+  currentGameInstanceId:null,
+  activeDoubleOrNothing:{},
+  _processedDoubleActions:{},
   goalAchieved:{},
   previewOrder:[],
   currentVoteOptions:[],
@@ -1521,6 +1527,12 @@ function resetMarathonRuntime(options = {}) {
   state._vetoPenaltyApplied = {};
   state.postGameWindow = false;
   state._processedRevengeActions = {};
+  state.currentGameStarted = false;
+  state.preGameWindow = false;
+  state.gamePhase = 'idle';
+  state.currentGameInstanceId = null;
+  state.activeDoubleOrNothing = {};
+  state._processedDoubleActions = {};
 
   // Ergebnis-/Joker-Modals und ersetzte Endscreen-HTML zurücksetzen.
   pendingJokerPlayer = null;
@@ -1606,6 +1618,12 @@ function buildSessionSnapshot(name, finalize=false) {
     vetoPenaltyApplied: state._vetoPenaltyApplied || {},
     postGameWindow: !!state.postGameWindow,
     processedRevengeActions: state._processedRevengeActions || {},
+    currentGameStarted: !!state.currentGameStarted,
+    preGameWindow: !!state.preGameWindow,
+    gamePhase: state.gamePhase || 'idle',
+    currentGameInstanceId: state.currentGameInstanceId || null,
+    activeDoubleOrNothing: state.activeDoubleOrNothing || {},
+    processedDoubleActions: state._processedDoubleActions || {},
     goalAchieved: state.goalAchieved || {},
     activeJokers: state.activeJokers || {},
     currentVoteOptions: state.currentVoteOptions || [],
@@ -2894,6 +2912,7 @@ function _doNextGame() {
   while (state.currentIdx < state.plan.length && state.plan[state.currentIdx].done) state.currentIdx++;
   if (state.currentIdx >= state.plan.length) { showEndScreen(); return; }
   state.activeJokers = {};
+  enterPreGamePhase(state.plan[state.currentIdx]);
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
   renderCurrentGame();
   renderPlanList();
@@ -2904,6 +2923,10 @@ function _doNextGame() {
 
 function startGameVoteRound() {
   state.postGameWindow = false;
+  state.currentGameStarted = false;
+  state.preGameWindow = false;
+  state.gamePhase = 'selection';
+  state.currentGameInstanceId = null;
   const target = getMarathonTargetGameCount();
   if (target > 0 && getCompletedGameCount() >= target) {
     showEndScreen();
@@ -3318,6 +3341,68 @@ function getActuallyCurrentGame(source = state) {
   return entry ? (source.games || []).find(game => game.id === entry.gameId) || null : null;
 }
 
+function enterPreGamePhase(entry = getCurrentGameEntry()) {
+  if (!entry || entry.done) return false;
+  entry.gameInstanceId ||= uid();
+  state.currentGameInstanceId = entry.gameInstanceId;
+  state.currentGameStarted = false;
+  state.preGameWindow = true;
+  state.gamePhase = 'preGame';
+  state.activeDoubleOrNothing = {};
+  return true;
+}
+
+function canUseDoubleOrNothingJoker(playerName, source = state) {
+  const entry = getCurrentGameEntry(source);
+  const phase = source === state ? state._setupPhase : source?.phase;
+  return !!(
+    entry && !entry.done &&
+    source?.preGameWindow === true &&
+    source?.currentGameStarted !== true &&
+    source?.gamePhase === 'preGame' &&
+    !!source?.currentGameInstanceId &&
+    entry.gameInstanceId === source.currentGameInstanceId &&
+    !source?.currentVoteRoundId && !source?.currentVoteId &&
+    !source?._gameVoteAnimating &&
+    phase === 'marathon' &&
+    !source?._marathonFinished && !source?.marathonFinished
+  );
+}
+
+function clearDoubleOrNothingForCurrentGame() {
+  Object.keys(state.activeDoubleOrNothing || {}).forEach(playerName => {
+    if (state.activeJokers?.[playerName] === 'double') delete state.activeJokers[playerName];
+  });
+  state.activeDoubleOrNothing = {};
+}
+
+function isDoubleOrNothingActiveForCurrentGame(playerName) {
+  const binding = state.activeDoubleOrNothing?.[playerName];
+  return state.activeJokers?.[playerName] === 'double'
+    && binding?.gameInstanceId === state.currentGameInstanceId
+    && binding?.gameId === getCurrentGameEntry()?.gameId;
+}
+
+function startCurrentGame() {
+  const entry = getCurrentGameEntry();
+  if (!entry || entry.done || !state.preGameWindow || state.currentGameStarted) return;
+  if (isTipsterChoosing()) {
+    showToast('Bitte warten: Die Tipp-Joker-Abgabe läuft noch.');
+    return;
+  }
+  if (state._gameVoteAnimating || state.currentVoteRoundId || state.currentVoteId) {
+    showToast('Bitte warten: Die Spielauswahl läuft noch.');
+    return;
+  }
+  state.currentGameStarted = true;
+  state.preGameWindow = false;
+  state.gamePhase = 'playing';
+  renderCurrentGame();
+  saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+  showToast('▶️ Spiel gestartet!');
+}
+
 function canUseTwistJoker(currentGame = getActuallyCurrentGame(state), source = state) {
   const entry = getCurrentGameEntry(source);
   const phase = source === state ? state._setupPhase : source?.phase;
@@ -3340,6 +3425,9 @@ function getJokerAvailability(playerName, jokerId, source = state) {
   if (jokerId === 'underdog') return {allowed:false, reason:'Wird automatisch ausgelöst.'};
   if (jokerId === 'veto') return {allowed:false, reason:'Wird erst bei der abschließenden Spielauswahl verwendet.'};
   if (jokerId === 'magnet' || jokerId === 'ban') return {allowed:false, reason:'Nur während der Spielwahl am Handy verfügbar.'};
+  if (jokerId === 'double') return canUseDoubleOrNothingJoker(playerName, source)
+    ? {allowed:true, reason:''}
+    : {allowed:false, reason:'Nur nach der Spielauswahl und vor dem Spielstart verfügbar.'};
   if (jokerId === 'revenge') return canUseRevengeJoker(source)
     ? {allowed:true, reason:''}
     : {allowed:false, reason:'Nur direkt nach der Punktevergabe eines Spiels verfügbar.'};
@@ -3638,6 +3726,7 @@ function finishMarioKartSelection(gameId) {
     voteId: state.currentVoteId
   });
   state.currentIdx = state.plan.length - 1;
+  enterPreGamePhase(state.plan[state.currentIdx]);
   state.currentVoteOptions = [];
   state.currentGameVotes = {};
   state.currentVoteId = null;
@@ -3752,6 +3841,7 @@ function renderCurrentGame() {
   if (!entry) return;
   const g = state.games.find(g=>g.id===entry.gameId);
   if (!g) return;
+  const startBlocked = isTipsterChoosing() || !!state._gameVoteAnimating || !!state.currentVoteRoundId || !!state.currentVoteId;
 
   let teamsHtml = '';
   if (entry.teams) {
@@ -3781,6 +3871,7 @@ function renderCurrentGame() {
       <div class="rule-banner-title">⭐ Sonderregel – wer es schafft bekommt +${pts.special} Punkt(e)</div>
       <div style="font-weight:600;font-size:.92rem">${esc(entry.rule)}</div>
     </div>
+    ${state.preGameWindow && !state.currentGameStarted ? `<button class="btn btn-green" id="btn-start-current-game" style="width:100%;padding:14px;font-size:1.05rem;margin-top:12px" onclick="startCurrentGame()" ${startBlocked?'disabled':''}>${startBlocked?'⏳ Warte auf ausstehende Handyaktion':'▶️ Spiel starten'}</button>` : ''}
   `;
   updateProgressBar();
 
@@ -3793,6 +3884,8 @@ function renderCurrentGame() {
         <div style="font-size:1.08rem;font-weight:900"><span class="chip ${tipsterPlayer?.color || ''} active" style="cursor:default;margin-right:5px">${esc(state.pendingTipster.playerName)}</span> zieht seinen <strong style="color:var(--gold)">Tipp-Joker</strong> und stimmt nun ab!</div>
         <div style="font-size:.85rem;color:var(--muted);margin-top:10px">Das Spiel kann erst gestartet werden, wenn ${esc(state.pendingTipster.playerName)} seinen Tipp bestätigt hat.</div>
       </div>`;
+  } else if (state.preGameWindow && !state.currentGameStarted) {
+    resultArea.innerHTML = `<div class="empty-state"><div class="icon">⏸️</div><p><strong>Spiel wurde noch nicht gestartet</strong><br><span style="font-size:.82rem;color:var(--muted)">Starte zuerst das Spiel, bevor Ergebnisse eingetragen werden können.</span></p></div>`;
   } else {
     const lockedTip = state.pendingTipster?.status === 'locked' && state.pendingTipster.gameIndex === state.currentIdx && state.pendingTipster.gameId === entry.gameId;
     const tipsterPlayer = lockedTip ? state.players.find(p => p.name === state.pendingTipster.playerName) : null;
@@ -3808,7 +3901,7 @@ function buildResultInput(g, entry) {
     ? `<div style="background:rgba(233,69,96,.1);border-radius:8px;padding:6px 10px;font-size:.78rem;color:var(--accent);margin-bottom:8px">⚡ ${esc(getWinConditionLabel(winCondition))} - Punkte wie gewohnt manuell vergeben</div>`
     : '';
   if (g.type === 'ffa') {
-    const doublePlayers = state.players.filter(p=>state.activeJokers[p.name]==='double');
+    const doublePlayers = state.players.filter(p=>isDoubleOrNothingActiveForCurrentGame(p.name));
     const doubleBanner = doublePlayers.length ? `
       <div style="background:linear-gradient(135deg,rgba(255,215,0,.15),rgba(233,69,96,.1));border:2px solid var(--gold);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
         <span style="font-size:1.4rem">🎯</span>
@@ -3823,7 +3916,7 @@ function buildResultInput(g, entry) {
       ${winConditionNote}
       <div class="points-grid">
         ${state.players.map(p => {
-          const hasDouble = state.activeJokers[p.name] === 'double';
+          const hasDouble = isDoubleOrNothingActiveForCurrentGame(p.name);
           return `
           <div class="points-player" style="${hasDouble?'border:2px solid var(--gold);border-radius:10px;padding:6px;background:rgba(255,215,0,.07)':''}">
             <div style="font-weight:700;font-size:.88rem">${esc(p.name)}${hasDouble?' <span style="font-size:.7rem;color:var(--gold)">🎯 ×2</span>':''}</div>
@@ -3948,6 +4041,10 @@ function selectCoop(r) {
 }
 
 function submitResult(type) {
+  if (!state.currentGameStarted || state.preGameWindow || state.gamePhase !== 'playing') {
+    showToast('Bitte das Spiel zuerst starten.');
+    return;
+  }
   if (isTipsterChoosing()) {
     showToast('Bitte warten: Tipp-Joker-Auswahl läuft noch.');
     return;
@@ -3997,7 +4094,7 @@ function submitResult(type) {
   // Apply Doppelt-oder-Nichts with feedback
   const doubleResults = [];
   state.players.forEach(p => {
-    if (state.activeJokers[p.name] === 'double') {
+    if (isDoubleOrNothingActiveForCurrentGame(p.name)) {
       let won = false;
       if (type==='ffa') won = resultSel.ffa[p.name] <= Math.ceil(state.players.length/2);
       else if (type==='2v2') { const wt = resultSel['2v2']==='A'?entry.teams.teamA:entry.teams.teamB; won = wt.includes(p.name); }
@@ -4017,6 +4114,10 @@ function submitResult(type) {
   trackPlayedGameStats(entry, g);
   entry.done = true;
   state.postGameWindow = true;
+  clearDoubleOrNothingForCurrentGame();
+  state.currentGameStarted = false;
+  state.preGameWindow = false;
+  state.gamePhase = 'postGame';
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
   // Clear result input area immediately so old selections don't show
   const ria = document.getElementById('result-input-area');
@@ -4240,6 +4341,59 @@ function requestHostRevengeConfirmation(playerName) {
   );
 }
 
+function executeDoubleOrNothingJoker(playerName, expected = {}) {
+  const player = findPlayerByVoteName(playerName);
+  const availability = player ? getJokerAvailability(player.name, 'double', state) : {allowed:false, reason:'Unbekannter Spieler.'};
+  if (!availability.allowed) {
+    showToast(availability.reason);
+    return false;
+  }
+  const entry = getCurrentGameEntry();
+  const game = getActuallyCurrentGame();
+  if (!entry || !game ||
+      (expected.gameId && expected.gameId !== game.id) ||
+      (expected.gameInstanceId && expected.gameInstanceId !== state.currentGameInstanceId)) {
+    showToast('Die Doppelt-oder-nichts-Anfrage gehört nicht zum aktuellen Spiel.');
+    return false;
+  }
+  const actionId = expected.actionId || uid();
+  state._processedDoubleActions ||= {};
+  if (state._processedDoubleActions[actionId]) return false;
+  const joker = state.jokers?.[player.name]?.find(item => item.id === 'double' && !item.used);
+  if (!joker) return false;
+
+  joker.used = true;
+  state._processedDoubleActions[actionId] = Date.now();
+  state.activeJokers[player.name] = 'double';
+  state.activeDoubleOrNothing ||= {};
+  state.activeDoubleOrNothing[player.name] = {
+    gameId: game.id,
+    gameInstanceId: state.currentGameInstanceId,
+    activatedAt: Date.now()
+  };
+  renderCurrentGame();
+  renderJokerArea();
+  renderJokerStatusBar();
+  saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+  showToast(`🎲 ${player.name} setzt für ${game.name} Doppelt oder nichts ein!`);
+  return true;
+}
+
+function requestHostDoubleOrNothingConfirmation(playerName) {
+  const game = getActuallyCurrentGame();
+  if (!game || !canUseDoubleOrNothingJoker(playerName)) {
+    showToast('Nur nach der Spielauswahl und vor dem Spielstart verfügbar.');
+    return;
+  }
+  showConfirm(
+    '🎲 Doppelt oder nichts',
+    `Soll der Doppelt-oder-nichts-Joker wirklich für ${game.name} eingesetzt werden?`,
+    () => executeDoubleOrNothingJoker(playerName),
+    '🎲 Joker einsetzen'
+  );
+}
+
 function openJokerModal(playerName, jokerId) {
   const availability = getJokerAvailability(playerName, jokerId, state);
   if (!availability.allowed) {
@@ -4248,6 +4402,10 @@ function openJokerModal(playerName, jokerId) {
   }
   if (jokerId === 'revenge') {
     requestHostRevengeConfirmation(playerName);
+    return;
+  }
+  if (jokerId === 'double') {
+    requestHostDoubleOrNothingConfirmation(playerName);
     return;
   }
   if (jokerId === 'skip' && !shouldGiveFreeSkip()) {
@@ -4324,13 +4482,15 @@ function confirmJoker() {
   }
 
   if (j==='double') {
-    state.activeJokers[p] = 'double';
-    showToast(`🎯 Doppelt oder Nichts für ${p}!`);
+    closeModal('modal-joker');
+    executeDoubleOrNothingJoker(p);
+    return;
   }
 
   if (j==='skip') {
     const entry = state.plan[state.currentIdx];
     if (!entry) { closeModal('modal-joker'); return; }
+    clearDoubleOrNothingForCurrentGame();
     if (state.pendingTipster?.gameIndex === state.currentIdx && state.pendingTipster?.gameId === entry.gameId) {
       state.pendingTipster = null;
     }
@@ -4652,6 +4812,31 @@ function loadSession(id) {
   state.postGameWindow = !!s.postGameWindow;
   state._processedRevengeActions = s.processedRevengeActions || {};
   state.activeJokers = s.activeJokers || {};
+  const loadedEntry = state.plan?.[state.currentIdx];
+  const hasSavedGamePhase = s.gamePhase === 'preGame' || s.gamePhase === 'playing' || s.gamePhase === 'postGame';
+  state.currentGameStarted = hasSavedGamePhase ? !!s.currentGameStarted : !!(loadedEntry && !loadedEntry.done);
+  state.preGameWindow = hasSavedGamePhase ? !!s.preGameWindow : false;
+  state.gamePhase = hasSavedGamePhase ? s.gamePhase : (loadedEntry?.done ? 'postGame' : loadedEntry ? 'playing' : 'idle');
+  if (loadedEntry && !loadedEntry.done) loadedEntry.gameInstanceId ||= s.currentGameInstanceId || uid();
+  state.currentGameInstanceId = s.currentGameInstanceId || loadedEntry?.gameInstanceId || null;
+  state.activeDoubleOrNothing = s.activeDoubleOrNothing || {};
+  state._processedDoubleActions = s.processedDoubleActions || {};
+  if (loadedEntry && !loadedEntry.done && state.currentGameInstanceId) {
+    Object.entries(state.activeJokers || {}).forEach(([playerName, jokerId]) => {
+      if (jokerId === 'double' && !state.activeDoubleOrNothing[playerName]) {
+        state.activeDoubleOrNothing[playerName] = {
+          gameId: loadedEntry.gameId,
+          gameInstanceId: state.currentGameInstanceId,
+          activatedAt: Date.now()
+        };
+      }
+    });
+  }
+  if (!loadedEntry || loadedEntry.done || loadedEntry.gameInstanceId !== state.currentGameInstanceId) {
+    state.preGameWindow = false;
+    if (state.gamePhase === 'preGame') state.gamePhase = loadedEntry?.done ? 'postGame' : 'idle';
+    clearDoubleOrNothingForCurrentGame();
+  }
   state._setupPhase = s.setupPhase || null;
   state._marathonStarted = s.marathonStarted ?? true;
   state._marathonFinished = !!s.marathonFinished;
@@ -4804,6 +4989,10 @@ function openTournamentDetail(id) {
 // ═══════════════════════════════════════════════════════════
 function showEndScreen() {
   state.postGameWindow = false;
+  state.currentGameStarted = false;
+  state.preGameWindow = false;
+  state.gamePhase = 'finished';
+  clearDoubleOrNothingForCurrentGame();
   const vetoPlayers = state.players.filter(p =>
     (state.jokers[p.name]||[]).find(j=>j.id==='veto'&&!j.used)
   );
@@ -5105,6 +5294,12 @@ function saveCurrentToLS() {
     vetoPenaltyApplied:state._vetoPenaltyApplied || {},
     postGameWindow:!!state.postGameWindow,
     processedRevengeActions:state._processedRevengeActions || {},
+    currentGameStarted:!!state.currentGameStarted,
+    preGameWindow:!!state.preGameWindow,
+    gamePhase:state.gamePhase || 'idle',
+    currentGameInstanceId:state.currentGameInstanceId || null,
+    activeDoubleOrNothing:state.activeDoubleOrNothing || {},
+    processedDoubleActions:state._processedDoubleActions || {},
     setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
   };
   setSessions(sessions);
@@ -7250,6 +7445,11 @@ function fbJoinSession(sessionId) {
     state.secretGoals= data.secretGoals|| state.secretGoals;
     state.goalAchieved= data.goalAchieved||state.goalAchieved;
     state.activeJokers= data.activeJokers||state.activeJokers;
+    state.activeDoubleOrNothing = data.activeDoubleOrNothing || {};
+    state.currentGameStarted = !!data.currentGameStarted;
+    state.preGameWindow = !!data.preGameWindow;
+    state.gamePhase = data.gamePhase || 'idle';
+    state.currentGameInstanceId = data.currentGameInstanceId || null;
     state.postGameWindow = !!data.postGameWindow;
     state.settings = {
       eventsEnabled: data.settings?.eventsEnabled !== false,
@@ -7459,6 +7659,10 @@ function fbGuestRequestJoker(sessionId, playerName, jokerId) {
       showToast(availability.reason);
       return;
     }
+    if (jokerId === 'double') {
+      smMobileShowDoubleConfirm(sessionId, syncedPlayer.name, data);
+      return;
+    }
     if (jokerId === 'revenge') {
       smMobileShowRevengeConfirm(sessionId, syncedPlayer.name, data);
       return;
@@ -7528,6 +7732,83 @@ window.smMobileConfirmRevenge = function smMobileConfirmRevenge() {
   }).catch(() => {
     if (button) { button.disabled = false; button.textContent = '🔄 Revanche starten'; }
     showToast('Die Revanche-Anfrage konnte nicht gesendet werden. Bitte erneut versuchen.');
+  });
+};
+
+window.smMobileShowDoubleConfirm = function smMobileShowDoubleConfirm(sessionId, playerName, data) {
+  const currentIdx = Number.isInteger(data.currentIdx) ? data.currentIdx : -1;
+  const entry = data.plan?.[currentIdx];
+  const game = data.games?.find(item => item.id === entry?.gameId);
+  if (!entry || !game || !canUseDoubleOrNothingJoker(playerName, data)) {
+    showToast('Nur nach der Spielauswahl und vor dem Spielstart verfügbar.');
+    return;
+  }
+  document.getElementById('mobile-double-confirm-overlay')?.remove();
+  window._pendingMobileDouble = {sessionId, playerName, gameId:game.id, gameInstanceId:data.currentGameInstanceId};
+  const overlay = document.createElement('div');
+  overlay.id = 'mobile-double-confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:18px';
+  overlay.innerHTML = `<div style="width:min(100%,460px);background:#171a2e;border:2px solid #ffd700;border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.7)">
+    <div style="font-size:2.8rem;text-align:center">🎲</div>
+    <div style="font-size:1.25rem;font-weight:950;text-align:center;color:#ffd700;margin:8px 0 14px">Doppelt oder nichts</div>
+    <div style="font-size:1rem;font-weight:850;text-align:center;line-height:1.45">Willst du den Doppelt-oder-nichts-Joker wirklich für ${smMobileEsc(game.name)} einsetzen?</div>
+    <div style="font-size:.82rem;color:#aaa;line-height:1.5;text-align:center;margin-top:12px">Top-Hälfte bedeutet doppelte Punkte. Andernfalls erhältst du für dieses Spiel 0 Punkte.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px">
+      <button onclick="smMobileCancelDouble()" style="border:1px solid #666;border-radius:10px;background:#272a3d;color:#fff;padding:12px;font-weight:850">Abbrechen</button>
+      <button id="mobile-double-confirm-button" onclick="smMobileConfirmDouble()" style="border:none;border-radius:10px;background:#e94560;color:#fff;padding:12px;font-weight:900">🎲 Joker einsetzen</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+};
+
+window.smMobileCancelDouble = function smMobileCancelDouble() {
+  if (window._mobileDoubleResultRef) window._mobileDoubleResultRef.off();
+  if (window._mobileDoubleResultTimeout) clearTimeout(window._mobileDoubleResultTimeout);
+  window._mobileDoubleResultRef = null;
+  window._mobileDoubleResultTimeout = null;
+  window._pendingMobileDouble = null;
+  document.getElementById('mobile-double-confirm-overlay')?.remove();
+};
+
+window.smMobileConfirmDouble = function smMobileConfirmDouble() {
+  const pending = window._pendingMobileDouble;
+  if (!pending || !fbInit()) return;
+  const button = document.getElementById('mobile-double-confirm-button');
+  if (button) { button.disabled = true; button.textContent = 'Wird gesendet…'; }
+  firebase.database().ref(`sessions/${pending.sessionId}/guestActions`).push({
+    type:'useDoubleOrNothing',
+    playerKey:getGameVotePlayerKey(pending.playerName),
+    playerName:pending.playerName,
+    gameId:pending.gameId,
+    gameInstanceId:pending.gameInstanceId,
+    timestamp:Date.now(),
+    ts:Date.now()
+  }).then(actionRef => {
+    if (button) button.textContent = 'Warte auf Host…';
+    const resultRef = firebase.database().ref(`sessions/${pending.sessionId}/doubleActionResults/${actionRef.key}`);
+    const timeout = setTimeout(() => {
+      resultRef.off();
+      window._mobileDoubleResultRef = null;
+      window._mobileDoubleResultTimeout = null;
+      smMobileCancelDouble();
+      showToast('Keine Host-Antwort erhalten. Der Joker wurde nicht erneut gesendet.');
+    }, 12000);
+    window._mobileDoubleResultRef = resultRef;
+    window._mobileDoubleResultTimeout = timeout;
+    resultRef.on('value', snap => {
+      const result = snap.val();
+      if (!result) return;
+      clearTimeout(timeout);
+      resultRef.off();
+      window._mobileDoubleResultRef = null;
+      window._mobileDoubleResultTimeout = null;
+      resultRef.remove().catch(() => {});
+      smMobileCancelDouble();
+      showToast(result.accepted ? '🎲 Joker erfolgreich eingesetzt!' : (result.message || 'Joker wurde vom Host abgelehnt.'));
+    });
+  }).catch(() => {
+    if (button) { button.disabled = false; button.textContent = '🎲 Joker einsetzen'; }
+    showToast('Die Joker-Anfrage konnte nicht gesendet werden. Bitte erneut versuchen.');
   });
 };
 
@@ -7738,6 +8019,12 @@ window.startMarathon = function startMarathon() {
   state._vetoPenaltyApplied = {};
   state.postGameWindow = false;
   state._processedRevengeActions = {};
+  state.currentGameStarted = false;
+  state.preGameWindow = false;
+  state.gamePhase = 'idle';
+  state.currentGameInstanceId = null;
+  state.activeDoubleOrNothing = {};
+  state._processedDoubleActions = {};
   state.currentIdx = -1;
   state.jokerPicks = {};
 
@@ -7844,6 +8131,7 @@ window.fbPushState = function fbPushState() {
     secretGoals: areSecretGoalsEnabled() ? cleanGoals : null,
     goalAchieved: areSecretGoalsEnabled() ? state.goalAchieved : null,
     activeJokers: state.activeJokers,
+    activeDoubleOrNothing: state.activeDoubleOrNothing || {},
     pendingTipster,
     games: cleanGames,
     marathonMode: normalizeMarathonMode(state.marathonMode),
@@ -7859,6 +8147,10 @@ window.fbPushState = function fbPushState() {
     phase,
     marathonStarted: !!state._marathonStarted,
     marathonFinished: !!state._marathonFinished,
+    currentGameStarted: !!state.currentGameStarted,
+    preGameWindow: !!state.preGameWindow,
+    gamePhase: state.gamePhase || 'idle',
+    currentGameInstanceId: state.currentGameInstanceId || null,
     settings: {...ensureFeatureSettings()},
     postGameWindow: !!state.postGameWindow,
     ts: Date.now(),
@@ -8015,7 +8307,35 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       markProcessed();
       return;
     }
+    if (action.type === 'useDoubleOrNothing') {
+      const p = findPlayerByVoteName(action.playerKey || action.playerName);
+      state._processedDoubleActions ||= {};
+      if (state._processedDoubleActions[actionKey]) {
+        console.warn('[double ignored]', 'duplicate action', actionKey);
+        fbSessionRef.child(`doubleActionResults/${actionKey}`).set({accepted:false,message:'Diese Anfrage wurde bereits verarbeitet.',ts:Date.now()});
+        markProcessed();
+        return;
+      }
+      const accepted = !!p && executeDoubleOrNothingJoker(p.name, {
+        actionId:actionKey,
+        gameId:action.gameId,
+        gameInstanceId:action.gameInstanceId
+      });
+      if (!accepted) console.warn('[double rejected]', action);
+      fbSessionRef.child(`doubleActionResults/${actionKey}`).set({
+        accepted,
+        message:accepted ? 'Joker eingesetzt.' : 'Nur nach der Spielauswahl und vor dem Spielstart verfügbar.',
+        ts:Date.now()
+      });
+      markProcessed();
+      return;
+    }
     if (action.type === 'useJoker') {
+      if (action.jokerId === 'double' || action.jokerId === 'revenge') {
+        console.warn('[joker rejected]', 'dedicated mobile action required', action);
+        markProcessed();
+        return;
+      }
       const p = findPlayerByVoteName(action.playerName);
       const availability = p ? getJokerAvailability(p.name, action.jokerId, state) : {allowed:false, reason:'Unbekannter Spieler.'};
       if (!availability.allowed) {
@@ -8114,6 +8434,12 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     const data = snap.val();
     const c = document.getElementById('mobile-content');
     if (!c) return;
+    if (window._pendingMobileDouble && (!data ||
+        !canUseDoubleOrNothingJoker(window._pendingMobileDouble.playerName, data) ||
+        data.currentGameInstanceId !== window._pendingMobileDouble.gameInstanceId)) {
+      smMobileCancelDouble();
+      showToast('Das Spiel wurde bereits gestartet. Der Joker wurde nicht eingesetzt.');
+    }
     if (!data) {
       c.innerHTML = `<div style="text-align:center;padding:40px 20px"><div style="font-size:2rem;margin-bottom:12px">❌</div><div style="color:#e94560;font-weight:700">Session nicht gefunden!</div></div>`;
       return;
@@ -9366,6 +9692,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
       voteId: state.currentVoteId
     });
     state.currentIdx = state.plan.length - 1;
+    enterPreGamePhase(state.plan[state.currentIdx]);
     state.currentVoteOptions = [];
     state.currentGameVotes = {};
     state.currentVoteId = null;
