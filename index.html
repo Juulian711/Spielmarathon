@@ -281,6 +281,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .game-vote-winner-label{color:#fff;font-size:clamp(.78rem,1vw,1rem);font-weight:950;text-transform:uppercase;letter-spacing:.24em;margin-bottom:12px;text-shadow:0 0 16px var(--winner-color)}
 .game-vote-winner-player{display:inline-flex;align-items:center;padding:7px 14px;border:1px solid var(--winner-color);border-radius:999px;color:var(--winner-color);font-size:.82rem;font-weight:900;margin-bottom:14px;background:color-mix(in srgb,var(--winner-color) 12%,transparent)}
 .game-vote-winner-name{font-size:clamp(2rem,3.6vw,4rem);line-height:1;font-weight:1000;letter-spacing:-.035em;text-shadow:0 0 25px color-mix(in srgb,var(--winner-color) 45%,transparent)}
+.revenge-showcase-overlay{z-index:6500;background:radial-gradient(circle at center,color-mix(in srgb,var(--revenge-color) 24%,transparent),rgba(0,0,0,.97) 68%);cursor:default;backdrop-filter:blur(12px)}
+.revenge-showcase{width:min(92vw,1280px);min-height:min(78vh,760px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:clamp(28px,5vw,72px);border:3px solid var(--revenge-color);border-radius:32px;background:radial-gradient(circle at 50% 15%,color-mix(in srgb,var(--revenge-color) 25%,transparent),transparent 48%),linear-gradient(150deg,#171d38,#080b16);box-shadow:0 0 0 5px color-mix(in srgb,var(--revenge-color) 20%,transparent),0 0 90px 20px color-mix(in srgb,var(--revenge-color) 48%,transparent),0 40px 120px rgba(0,0,0,.85);animation:revengeShowcasePop .65s cubic-bezier(.16,1.15,.3,1) both}
+.revenge-showcase-icon{font-size:clamp(5rem,12vw,10rem);line-height:1;filter:drop-shadow(0 0 30px var(--revenge-color));animation:revengeIconSpin .8s cubic-bezier(.2,.9,.25,1) both}
+.revenge-showcase-player{margin-top:22px;color:var(--revenge-color);font-size:clamp(2rem,4.8vw,5.2rem);font-weight:1000;line-height:1;text-transform:uppercase;text-shadow:0 0 28px var(--revenge-color)}
+.revenge-showcase-game{margin-top:clamp(26px,4vh,46px);font-size:clamp(2.2rem,5.5vw,6rem);font-weight:1000;line-height:1.02;letter-spacing:-.04em;color:#fff}
+.revenge-showcase-note{margin-top:24px;font-size:clamp(1rem,1.6vw,1.4rem);color:var(--muted);font-weight:750}
 .roulette-final-title{font-size:clamp(2.2rem,4.8vw,5rem);font-weight:1000;line-height:.95;letter-spacing:.04em;color:#fff;text-shadow:0 0 32px var(--winner-color);margin-bottom:13px}
 .roulette-winner-magnet{display:inline-flex;align-items:center;gap:7px;margin:0 0 13px;padding:6px 12px;border-radius:999px;background:rgba(78,205,196,.15);border:1px solid #4ecdc4;color:#7ff6ee;font-size:.82rem;font-weight:950;text-transform:uppercase;letter-spacing:.08em}
 @keyframes gameVoteRevealIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
@@ -293,6 +299,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 @keyframes rouletteMagnetCardIn{0%{opacity:0;transform:translateX(70px) scale(.72);filter:blur(5px)}70%{opacity:1;transform:translateX(-5px) scale(1.035);filter:blur(0)}100%{opacity:1;transform:none;filter:none}}
 @keyframes rouletteBannedSettle{0%{opacity:.85;filter:none;transform:scale(1.06);box-shadow:0 0 42px rgba(233,69,96,.8)}100%{opacity:.2;filter:grayscale(1) brightness(.48);transform:scale(.94)}}
 @keyframes rouletteFinalTick{0%{transform:translateY(-7px) scale(1.055)}55%{transform:translateY(-11px) scale(1.105)}100%{transform:translateY(-7px) scale(1.065)}}
+@keyframes revengeShowcasePop{0%{opacity:0;transform:scale(.72);filter:blur(9px)}65%{opacity:1;transform:scale(1.035);filter:blur(0)}100%{opacity:1;transform:scale(1);filter:blur(0)}}
+@keyframes revengeIconSpin{0%{opacity:0;transform:rotate(-180deg) scale(.4)}75%{opacity:1;transform:rotate(12deg) scale(1.12)}100%{transform:none}}
 @media(max-width:1050px){.modal.game-vote-roulette-modal{width:97vw;padding:clamp(18px,2.5vw,28px)}.game-vote-roulette-cards{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}.game-vote-roulette-cards .mk-vote-card{grid-template-columns:82px minmax(0,1fr);min-height:108px;padding:14px}.game-vote-roulette-cards .mk-vote-cover{width:82px;height:78px}}
 @media(max-width:700px){.modal.game-vote-roulette-modal{width:98vw;max-width:98vw;height:min(92vh,960px);border-radius:18px}.game-vote-roulette-title{font-size:clamp(1.55rem,6vw,2.2rem)}.game-vote-roulette-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:8px}.game-vote-roulette-cards .mk-vote-card{display:flex;flex-direction:column;align-items:stretch;min-height:0;padding:11px;gap:10px}.game-vote-roulette-cards .mk-vote-cover{width:100%;height:72px}.game-vote-roulette-stage .mk-winner-cover{height:min(39vh,330px)}}
 @media(prefers-reduced-motion:reduce){.game-vote-roulette-stage *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
@@ -1020,6 +1028,10 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 </div>
 </div>
 
+<div class="modal-overlay revenge-showcase-overlay" id="modal-revenge-showcase" role="dialog" aria-modal="true" aria-labelledby="revenge-showcase-player">
+  <div id="revenge-showcase-content"></div>
+</div>
+
 <!-- Secret Goal Handover Screen (black, who's next) -->
 <div class="modal-overlay" id="modal-goal-handover">
 <div class="modal" style="max-width:380px;text-align:center;background:#000;border:2px solid var(--gold)">
@@ -1327,7 +1339,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 // ═══════════════════════════════════════════════════════════
 const JOKER_DEFS = [
   {id:'double',  icon:'🎯', name:'Doppelt oder Nichts', desc:'Vor einem Spiel einsetzen. Landest du in der Top-Hälfte → doppelte Punkte! Verlierst du → 0 Punkte.', img:''},
-  {id:'revenge', icon:'🔁', name:'Revanche',            desc:'Erst nach dem ersten Spiel verfügbar. Das zuletzt gespielte Spiel wird sofort wiederholt. Deine alten Punkte bleiben – du kannst noch mehr holen!', img:''},
+  {id:'revenge', icon:'🔁', name:'Revanche',            desc:'Nur direkt nach der Punktevergabe verfügbar. Das abgeschlossene Spiel wird als zusätzliche Partie wiederholt; die alten Punkte bleiben bestehen.', img:''},
   {id:'veto',    icon:'🗳️', name:'Veto',                desc:'Du startest mit -3 Punkten. Genau ein Spiel vor Schluss darfst du automatisch ein ganzes Spiel aus der Wertung streichen – für alle!', img:''},
   {id:'twist',   icon:'🎭', name:'Rollentausch',         desc:'Bei einem Teamspiel darfst du selbst entscheiden wer in welchem Team spielt!', img:''},
   {id:'underdog',icon:'👑', name:'Underdog-Bonus',       desc:'Automatisch: Wer bei Halbzeit auf dem letzten Platz liegt, bekommt sofort +3 Punkte geschenkt.', img:''},
@@ -1381,6 +1393,8 @@ let state = {
   secretGoalExtras:{},
   comebackGiven:{},
   giftedJokers:{},
+  postGameWindow:false,
+  _processedRevengeActions:{},
   goalAchieved:{},
   previewOrder:[],
   currentVoteOptions:[],
@@ -1467,6 +1481,8 @@ function resetMarathonRuntime(options = {}) {
   state._forceLocalJokerPick = false;
   state._vetoFromEndScreen = false;
   state._vetoPenaltyApplied = {};
+  state.postGameWindow = false;
+  state._processedRevengeActions = {};
 
   // Ergebnis-/Joker-Modals und ersetzte Endscreen-HTML zurücksetzen.
   pendingJokerPlayer = null;
@@ -1549,6 +1565,8 @@ function buildSessionSnapshot(name, finalize=false) {
     comebackGiven: state.comebackGiven || {},
     giftedJokers: state.giftedJokers || {},
     vetoPenaltyApplied: state._vetoPenaltyApplied || {},
+    postGameWindow: !!state.postGameWindow,
+    processedRevengeActions: state._processedRevengeActions || {},
     goalAchieved: state.goalAchieved || {},
     activeJokers: state.activeJokers || {},
     currentVoteOptions: state.currentVoteOptions || [],
@@ -2787,6 +2805,7 @@ function nextGame() {
     switchTab('tab-current');
     return;
   }
+  state.postGameWindow = false;
   // Don't allow advancing if current game hasn't been submitted yet
   const entry = state.plan[state.currentIdx];
   if (entry && !entry.done) {
@@ -2829,6 +2848,7 @@ function canShowRandomEvent() {
 }
 
 function _doNextGame() {
+  state.postGameWindow = false;
   state.currentIdx++;
   while (state.currentIdx < state.plan.length && state.plan[state.currentIdx].done) state.currentIdx++;
   if (state.currentIdx >= state.plan.length) { showEndScreen(); return; }
@@ -2842,6 +2862,7 @@ function _doNextGame() {
 }
 
 function startGameVoteRound() {
+  state.postGameWindow = false;
   const target = getMarathonTargetGameCount();
   if (target > 0 && getCompletedGameCount() >= target) {
     showEndScreen();
@@ -2968,7 +2989,30 @@ function findPlayerByVoteName(name, players = state.players || []) {
 }
 
 function canUseRevengeJoker(data = state) {
-  return Array.isArray(data?.history) && data.history.length > 0;
+  const history = Array.isArray(data?.history) ? data.history : [];
+  const lastGame = history[history.length - 1];
+  const currentIdx = Number.isInteger(data?.currentIdx) ? data.currentIdx : -1;
+  const currentEntry = data?.plan?.[currentIdx];
+  const phase = data === state ? state._setupPhase : data?.phase;
+  const targetGameCount = Math.max(0, Number(data?.targetGameCount) || 0);
+  const marathonComplete = targetGameCount > 0 && history.length >= targetGameCount;
+  const sameCompletedGame = !!currentEntry?.done && !!lastGame && (
+    (lastGame.gameId && currentEntry.gameId === lastGame.gameId) ||
+    (!lastGame.gameId && data?.games?.find(game => game.id === currentEntry.gameId)?.name === lastGame.gameName)
+  );
+  return !!(
+    lastGame &&
+    data?.postGameWindow === true &&
+    sameCompletedGame &&
+    !data?.currentVoteRoundId &&
+    !data?.currentVoteId &&
+    !data?._gameVoteAnimating &&
+    !data?._revengePending &&
+    !marathonComplete &&
+    phase === 'marathon' &&
+    !data?._marathonFinished &&
+    !data?.marathonFinished
+  );
 }
 
 function isSelectionMode(source = state) {
@@ -3221,7 +3265,7 @@ function getJokerAvailability(playerName, jokerId, source = state) {
   if (jokerId === 'magnet' || jokerId === 'ban') return {allowed:false, reason:'Nur während der Spielwahl am Handy verfügbar.'};
   if (jokerId === 'revenge') return canUseRevengeJoker(source)
     ? {allowed:true, reason:''}
-    : {allowed:false, reason:'Erst nach dem ersten abgeschlossenen Spiel verfügbar.'};
+    : {allowed:false, reason:'Nur direkt nach der Punktevergabe eines Spiels verfügbar.'};
 
   const entry = getCurrentGameEntry(source);
   const currentGame = getActuallyCurrentGame(source);
@@ -3501,6 +3545,7 @@ function showMarioKartWinnerMoment(gameId) {
 }
 
 function finishMarioKartSelection(gameId) {
+  state.postGameWindow = false;
   const g = state.games.find(x => x.id === gameId);
   if (!g) { showToast('Ausgewähltes Spiel nicht gefunden.'); return; }
   console.log('[gameVote finish]', state.currentGameVotes, g);
@@ -3889,11 +3934,12 @@ function submitResult(type) {
 
   Object.entries(pointsMap).forEach(([name,p]) => { state.scores[name] = (state.scores[name]||0) + p; });
   state.history.push({
-    gameName: g.name, type: g.type, pts: {...pointsMap}, special: specialW,
+    id: uid(), gameId: g.id, gameName: g.name, type: g.type, pts: {...pointsMap}, special: specialW,
     isRevanche: !!(entry.isRevanche),
   });
   trackPlayedGameStats(entry, g);
   entry.done = true;
+  state.postGameWindow = true;
   resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
   // Clear result input area immediately so old selections don't show
   const ria = document.getElementById('result-input-area');
@@ -3966,7 +4012,7 @@ function renderJokerArea() {
             </div>
             ${!jstate.used && !revengeBlocked && jstate.id!=='tipster' ? `<button class="joker-use-btn" onclick="openJokerModal('${esc(p.name)}','${jstate.id}')" ${(jstate.id==='underdog'||jstate.id==='veto')?'style="display:none"':''}>Einsetzen</button>` : ''}
             ${!jstate.used && jstate.id==='tipster' ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--muted);font-weight:700">Nur am Handy einsetzbar</div>` : ''}
-            ${!jstate.used && revengeBlocked ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--muted);font-weight:700">Erst nach dem ersten Spiel verfügbar</div>` : ''}
+            ${!jstate.used && revengeBlocked ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--muted);font-weight:700">Nur direkt nach der Punktevergabe eines Spiels verfügbar.</div>` : ''}
             ${jstate.id==='underdog'&&!jstate.used ? `<div style="font-size:.65rem;text-align:center;padding:4px 6px;color:var(--green);font-weight:700">⚡ Wird automatisch ausgelöst</div>` : ''}
           </div>`;
         }).join('')}
@@ -4019,21 +4065,114 @@ function showGoalReview() {
   openModal('modal-goal-review');
 }
 
+function getLastCompletedGameForRevenge(source = state) {
+  const lastHistory = source.history?.[source.history.length - 1];
+  if (!lastHistory) return null;
+  const game = source.games?.find(item => item.id === lastHistory.gameId)
+    || source.games?.find(item => item.name === lastHistory.gameName);
+  return game ? {history:lastHistory, game} : null;
+}
+
+function showRevengeHostPopup(playerName, game, onComplete) {
+  const player = findPlayerByVoteName(playerName);
+  const color = getPlayerColorHex(player?.color);
+  const overlay = document.getElementById('modal-revenge-showcase');
+  const content = document.getElementById('revenge-showcase-content');
+  if (!overlay || !content) return onComplete?.();
+  overlay.style.setProperty('--revenge-color', color);
+  content.innerHTML = `<div class="revenge-showcase" style="--revenge-color:${color}">
+    <div class="revenge-showcase-icon">🔄</div>
+    <div class="revenge-showcase-player" id="revenge-showcase-player">${esc(playerName)} zieht den Revanche-Joker!</div>
+    <div class="revenge-showcase-game">${esc(game.name)} wird noch einmal gespielt!</div>
+    <div class="revenge-showcase-note">Die bisherigen Punkte bleiben bestehen.</div>
+  </div>`;
+  overlay.classList.add('open');
+  setTimeout(() => {
+    overlay.classList.remove('open');
+    content.innerHTML = '';
+    onComplete?.();
+  }, 3800);
+}
+
+function executeRevengeJoker(playerName, expected = {}) {
+  const player = findPlayerByVoteName(playerName);
+  const availability = player ? getJokerAvailability(player.name, 'revenge', state) : {allowed:false, reason:'Unbekannter Spieler.'};
+  if (!availability.allowed) {
+    showToast(availability.reason);
+    return false;
+  }
+  const last = getLastCompletedGameForRevenge();
+  if (!last) {
+    showToast('Das zuletzt abgeschlossene Spiel wurde nicht gefunden.');
+    return false;
+  }
+  if ((expected.gameId && expected.gameId !== last.game.id) ||
+      (expected.historyEntryId && expected.historyEntryId !== last.history.id)) {
+    showToast('Die Revanche-Anfrage gehört nicht mehr zum letzten Spiel.');
+    return false;
+  }
+  const actionId = expected.actionId || uid();
+  state._processedRevengeActions ||= {};
+  if (state._processedRevengeActions[actionId]) return false;
+
+  const joker = state.jokers?.[player.name]?.find(item => item.id === 'revenge' && !item.used);
+  if (!joker) return false;
+  joker.used = true;
+  state._processedRevengeActions[actionId] = Date.now();
+  state.postGameWindow = false;
+  state._revengePending = true;
+
+  const revengeEntry = {
+    gameId: last.game.id,
+    rule: pickRandom(last.game.rules || ['Standard']),
+    teams: generateTeams(last.game.type),
+    done: false,
+    isRevanche: true,
+    revengeActionId: actionId,
+    revengeOfHistoryId: last.history.id || null
+  };
+  state.plan.splice(state.currentIdx + 1, 0, revengeEntry);
+  state.targetGameCount = Math.max((state.targetGameCount || 0) + 1, state.plan.length);
+  saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+
+  showRevengeHostPopup(player.name, last.game, () => {
+    state._revengePending = false;
+    _doNextGame();
+    renderAll();
+    saveCurrentToLS();
+    if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+    showToast(`🔄 ${last.game.name} ist als neue Revanche-Partie bereit.`);
+  });
+  return true;
+}
+
+function requestHostRevengeConfirmation(playerName) {
+  const last = getLastCompletedGameForRevenge();
+  if (!last || !canUseRevengeJoker()) {
+    showToast('Nur direkt nach der Punktevergabe eines Spiels verfügbar.');
+    return;
+  }
+  showConfirm(
+    '🔄 Revanche-Joker',
+    `Soll ${last.game.name} wirklich erneut gespielt werden? Die bisherigen Punkte bleiben bestehen.`,
+    () => executeRevengeJoker(playerName),
+    '🔄 Revanche starten'
+  );
+}
+
 function openJokerModal(playerName, jokerId) {
   const availability = getJokerAvailability(playerName, jokerId, state);
   if (!availability.allowed) {
     showToast(availability.reason);
     return;
   }
-  if (jokerId === 'skip' && !shouldGiveFreeSkip()) {
-    showToast('Skip gibt es nur im Zufallsmodus.');
+  if (jokerId === 'revenge') {
+    requestHostRevengeConfirmation(playerName);
     return;
   }
-  if (jokerId === 'revenge' && !canUseRevengeJoker()) {
-    pendingJokerPlayer = null;
-    pendingJokerId = null;
-    showToast('Revanche ist erst nach dem ersten Spiel verfügbar.');
-    closeModal('modal-joker');
+  if (jokerId === 'skip' && !shouldGiveFreeSkip()) {
+    showToast('Skip gibt es nur im Zufallsmodus.');
     return;
   }
   pendingJokerPlayer = playerName;
@@ -4084,22 +4223,9 @@ function confirmJoker() {
   }
 
   if (j==='revenge') {
-    if (!canUseRevengeJoker()) { showToast('Revanche ist erst nach dem ersten Spiel verfügbar.'); closeModal('modal-joker'); return; }
-    const last = state.history[state.history.length-1];
-    const lastGame = state.games.find(g=>g.name===last.gameName);
-    if (lastGame) {
-      // Simply insert the same game again next — old points stay!
-      state.plan.splice(state.currentIdx + 1, 0, {
-        gameId: lastGame.id,
-        rule: pickRandom(lastGame.rules),
-        teams: generateTeams(lastGame.type),
-        done: false,
-        isRevanche: true
-      });
-      if (!isMarioKartMode()) state.targetGameCount = Math.max(state.targetGameCount || 0, state.plan.length);
-      showToast(`🔁 Revanche! ${lastGame.name} wird nochmals gespielt.`);
-      renderPlanList();
-    }
+    closeModal('modal-joker');
+    executeRevengeJoker(p);
+    return;
   }
 
   if (j==='twist') {
@@ -4439,6 +4565,8 @@ function loadSession(id) {
   state.goalAchieved  = s.goalAchieved  || {};
   state.giftedJokers  = s.giftedJokers  || {};
   state._vetoPenaltyApplied = s.vetoPenaltyApplied || s._vetoPenaltyApplied || {};
+  state.postGameWindow = !!s.postGameWindow;
+  state._processedRevengeActions = s.processedRevengeActions || {};
   state.activeJokers = s.activeJokers || {};
   state._setupPhase = s.setupPhase || null;
   state._marathonStarted = s.marathonStarted ?? true;
@@ -4446,6 +4574,7 @@ function loadSession(id) {
   state._vetoFromEndScreen = false;
   if (s.games) state.games = s.games;
   if (s.gameCategories) state.gameCategories = s.gameCategories;
+  if (!canUseRevengeJoker(state)) state.postGameWindow = false;
   normalizeGameCategories();
   if (!state.targetGameCount) state.targetGameCount = isMarioKartMode()
     ? calculateRouletteTargetGameCount(state.timeLimit)
@@ -4586,6 +4715,7 @@ function openTournamentDetail(id) {
 //  END SCREEN
 // ═══════════════════════════════════════════════════════════
 function showEndScreen() {
+  state.postGameWindow = false;
   const vetoPlayers = state.players.filter(p =>
     (state.jokers[p.name]||[]).find(j=>j.id==='veto'&&!j.used)
   );
@@ -4883,6 +5013,8 @@ function saveCurrentToLS() {
     pendingTipster:state.pendingTipster || null,
     secretGoals:state.secretGoals, secretGoalExtras:state.secretGoalExtras, comebackGiven:state.comebackGiven, goalAchieved:state.goalAchieved, giftedJokers:state.giftedJokers,
     vetoPenaltyApplied:state._vetoPenaltyApplied || {},
+    postGameWindow:!!state.postGameWindow,
+    processedRevengeActions:state._processedRevengeActions || {},
     setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
   };
   setSessions(sessions);
@@ -6414,16 +6546,19 @@ function checkComeback() {
   document.getElementById('comeback-msg').textContent =
     `${loser.name} liegt ${gap} Punkte zurück – das Schicksal greift ein!`;
   document.getElementById('comeback-joker-display').innerHTML =
-    `<div style="text-align:center;padding:12px;background:var(--surface);border-radius:10px;border:2px solid var(--gold);min-width:120px">
+    `<div style="width:100%"><div style="font-size:1.05rem;font-weight:950;color:var(--gold);margin-bottom:14px">🎁 ${esc(loser.name)} bekommt einen Joker geschenkt!</div>
+    <div style="text-align:center;padding:12px;background:var(--surface);border-radius:10px;border:2px solid var(--gold);min-width:120px">
       <div style="font-size:2rem">${bonus.icon}</div>
       <div style="font-weight:700;margin-top:4px">${bonus.name}</div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">${bonus.desc}</div>
-    </div>`;
+      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Geschenkter Joker: ${bonus.name}</div>
+    </div></div>`;
   soundComeback();
   haptic([100,50,100,50,200]);
   openModal('modal-comeback');
   renderJokerArea();
   renderJokerStatusBar();
+  saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -7017,6 +7152,7 @@ function fbJoinSession(sessionId) {
     state.secretGoals= data.secretGoals|| state.secretGoals;
     state.goalAchieved= data.goalAchieved||state.goalAchieved;
     state.activeJokers= data.activeJokers||state.activeJokers;
+    state.postGameWindow = !!data.postGameWindow;
     renderAll();
   });
   showToast(`📱 Session ${fbSessionId} verbunden!`);
@@ -7221,6 +7357,10 @@ function fbGuestRequestJoker(sessionId, playerName, jokerId) {
       showToast(availability.reason);
       return;
     }
+    if (jokerId === 'revenge') {
+      smMobileShowRevengeConfirm(sessionId, syncedPlayer.name, data);
+      return;
+    }
     if (jokerId === 'tipster') {
       ref.child('guestActions').push({
         type:'startTipster', playerName:syncedPlayer.name, ts:Date.now()
@@ -7234,6 +7374,60 @@ function fbGuestRequestJoker(sessionId, playerName, jokerId) {
     showToast('📱 Joker-Anfrage gesendet!');
   }).catch(() => showToast('Joker-Anfrage konnte nicht gesendet werden.'));
 }
+
+window.smMobileShowRevengeConfirm = function smMobileShowRevengeConfirm(sessionId, playerName, data) {
+  const lastHistory = data.history?.[data.history.length - 1];
+  const game = data.games?.find(item => item.id === lastHistory?.gameId)
+    || data.games?.find(item => item.name === lastHistory?.gameName);
+  if (!lastHistory || !game || !canUseRevengeJoker(data)) {
+    showToast('Nur direkt nach der Punktevergabe eines Spiels verfügbar.');
+    return;
+  }
+  document.getElementById('mobile-revenge-confirm-overlay')?.remove();
+  window._pendingMobileRevenge = {sessionId, playerName, gameId:game.id, historyEntryId:lastHistory.id || null};
+  const overlay = document.createElement('div');
+  overlay.id = 'mobile-revenge-confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:18px';
+  overlay.innerHTML = `<div style="width:min(100%,460px);background:#171a2e;border:2px solid #e94560;border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.7)">
+    <div style="font-size:2.8rem;text-align:center">🔄</div>
+    <div style="font-size:1.25rem;font-weight:950;text-align:center;color:#fff;margin:8px 0 14px">Revanche-Joker</div>
+    <div style="font-size:1rem;font-weight:850;text-align:center;line-height:1.45">Willst du wirklich ${smMobileEsc(game.name)} erneut spielen?</div>
+    <div style="font-size:.82rem;color:#aaa;line-height:1.5;text-align:center;margin-top:12px">Die bereits vergebenen Punkte bleiben bestehen. Das Spiel wird als zusätzliche neue Partie wiederholt.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px">
+      <button onclick="smMobileCancelRevenge()" style="border:1px solid #666;border-radius:10px;background:#272a3d;color:#fff;padding:12px;font-weight:850">Abbrechen</button>
+      <button id="mobile-revenge-confirm-button" onclick="smMobileConfirmRevenge()" style="border:none;border-radius:10px;background:#e94560;color:#fff;padding:12px;font-weight:900">🔄 Revanche starten</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+};
+
+window.smMobileCancelRevenge = function smMobileCancelRevenge() {
+  window._pendingMobileRevenge = null;
+  document.getElementById('mobile-revenge-confirm-overlay')?.remove();
+};
+
+window.smMobileConfirmRevenge = function smMobileConfirmRevenge() {
+  const pending = window._pendingMobileRevenge;
+  if (!pending || !fbInit()) return;
+  const button = document.getElementById('mobile-revenge-confirm-button');
+  if (button) { button.disabled = true; button.textContent = 'Wird gesendet…'; }
+  const action = {
+    type:'useRevengeJoker',
+    playerKey:getGameVotePlayerKey(pending.playerName),
+    playerName:pending.playerName,
+    gameId:pending.gameId,
+    historyEntryId:pending.historyEntryId,
+    timestamp:Date.now(),
+    ts:Date.now()
+  };
+  firebase.database().ref(`sessions/${pending.sessionId}/guestActions`).push(action).then(() => {
+    smMobileCancelRevenge();
+    showToast('🔄 Revanche-Anfrage gesendet!');
+  }).catch(() => {
+    if (button) { button.disabled = false; button.textContent = '🔄 Revanche starten'; }
+    showToast('Die Revanche-Anfrage konnte nicht gesendet werden. Bitte erneut versuchen.');
+  });
+};
 
 // Generate mobile player QR URLs
 function openPlayerQRModal() {
@@ -7440,6 +7634,8 @@ window.startMarathon = function startMarathon() {
   state._setupPhase = 'jokerPick';
   state._vetoFromEndScreen = false;
   state._vetoPenaltyApplied = {};
+  state.postGameWindow = false;
+  state._processedRevengeActions = {};
   state.currentIdx = -1;
   state.jokerPicks = {};
 
@@ -7559,6 +7755,7 @@ window.fbPushState = function fbPushState() {
     phase,
     marathonStarted: !!state._marathonStarted,
     marathonFinished: !!state._marathonFinished,
+    postGameWindow: !!state.postGameWindow,
     ts: Date.now(),
     hostAlive: true,
   };
@@ -7693,6 +7890,23 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       if (p && picked) accepted = lockPendingTipsterPick(p.name, picked.name);
       if (!accepted) console.warn('[tipster pick ignored]', action);
       fbPushState();
+      markProcessed();
+      return;
+    }
+    if (action.type === 'useRevengeJoker') {
+      const p = findPlayerByVoteName(action.playerKey || action.playerName);
+      state._processedRevengeActions ||= {};
+      if (state._processedRevengeActions[actionKey]) {
+        console.warn('[revenge ignored]', 'duplicate action', actionKey);
+        markProcessed();
+        return;
+      }
+      const accepted = !!p && executeRevengeJoker(p.name, {
+        actionId: actionKey,
+        gameId: action.gameId,
+        historyEntryId: action.historyEntryId || null
+      });
+      if (!accepted) console.warn('[revenge rejected]', action);
       markProcessed();
       return;
     }
@@ -8034,7 +8248,7 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
           const tipsterBlocked = j.id === 'tipster' && !!data.pendingTipster;
           const availability = getJokerAvailability(playerName, j.id, data);
           const canUseThisJoker = availability.allowed && !j.used && j.id !== 'underdog' && canUseJokers && !revengeBlocked && !modeOnlyBlocked && !tipsterBlocked;
-          const blockedLabel = availability.reason || (tipsterBlocked ? 'Tipp läuft bereits' : revengeBlocked ? 'Erst nach dem ersten Spiel' : modeOnlyBlocked ? 'Nur in der Spielauswahl' : 'Erst nach Start');
+          const blockedLabel = availability.reason || (tipsterBlocked ? 'Tipp läuft bereits' : revengeBlocked ? 'Nur direkt nach der Punktevergabe eines Spiels verfügbar.' : modeOnlyBlocked ? 'Nur in der Spielauswahl' : 'Erst nach Start');
           const twistBlocked = j.id === 'twist' && !availability.allowed;
           return `<div onclick="smMobileOpenJokerOverlay('${smMobileEsc(j.id)}',event)" style="display:flex;align-items:center;gap:12px;padding:10px;background:${j.used?'rgba(255,255,255,.02)':'rgba(255,255,255,.06)'};border-radius:10px;margin-bottom:8px;opacity:${j.used || twistBlocked ? .5 : 1};filter:${twistBlocked?'grayscale(1)':'none'};border:1px solid ${j.used?'transparent':'rgba(255,255,255,.1)'};cursor:pointer">
             <span style="width:44px;height:58px;border-radius:8px;overflow:hidden;background:#eee;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;color:#111">${smJokerVisualHtml(jd,'1.6rem')}</span>
@@ -9027,6 +9241,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   window.showMarioKartWinnerMoment = showMarioKartWinnerMoment;
 
   function finishMarioKartSelection(gameId) {
+    state.postGameWindow = false;
     const g = state.games.find(x => x.id === gameId);
     if (!g) { showToast('Ausgewähltes Spiel nicht gefunden.'); return; }
     console.log('[gameVote finish]', state.currentGameVotes, g);
@@ -9068,6 +9283,11 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   window.finishMarioKartSelection = finishMarioKartSelection;
 
   document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && document.getElementById('modal-revenge-showcase')?.classList.contains('open')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (event.key === 'Escape' && document.getElementById('modal-game-vote-roulette')?.classList.contains('open')) {
       event.preventDefault();
       event.stopImmediatePropagation();
