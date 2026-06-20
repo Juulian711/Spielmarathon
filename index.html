@@ -425,6 +425,15 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 #modal-veto-pick{z-index:2500}
 .modal{background:var(--card);border-radius:var(--radius);padding:24px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow);border:1px solid rgba(255,255,255,.08);transform:scale(.96);transition:transform .2s}
 .modal-overlay.open .modal{transform:scale(1)}
+.host-popup-overlay{z-index:7200!important;background:rgba(3,5,13,.9);backdrop-filter:blur(10px);cursor:default}
+.host-popup-modal{max-width:760px!important;text-align:center;padding:clamp(26px,4vw,48px)!important;border:3px solid var(--host-popup-color,var(--gold))!important;background:radial-gradient(circle at 50% 0,color-mix(in srgb,var(--host-popup-color,var(--gold)) 20%,transparent),transparent 48%),linear-gradient(150deg,#1a1e35,#090b14)!important;box-shadow:0 0 65px color-mix(in srgb,var(--host-popup-color,var(--gold)) 32%,transparent),0 35px 100px rgba(0,0,0,.8)!important}
+.host-popup-icon{font-size:clamp(4rem,9vw,7rem);line-height:1;margin-bottom:16px;filter:drop-shadow(0 0 18px var(--host-popup-color,var(--gold)))}
+.host-popup-title{font-size:clamp(1.7rem,3.8vw,3rem)!important;line-height:1.08;margin-bottom:18px!important;color:#fff!important}
+.host-popup-body{font-size:clamp(1rem,1.8vw,1.35rem);line-height:1.55;white-space:pre-line;color:#edf0ff}
+.host-popup-player{display:inline-block;margin:16px 0 4px;padding:7px 16px;border-radius:999px;font-size:1.15rem;font-weight:950;color:var(--player-popup-color,#fff);border:2px solid var(--player-popup-color,#fff);background:color-mix(in srgb,var(--player-popup-color,#fff) 14%,transparent)}
+.host-popup-points{margin-top:20px;padding:15px 18px;border-radius:14px;font-size:clamp(1.05rem,2vw,1.45rem);font-weight:950;color:var(--host-popup-color,var(--gold));background:rgba(0,0,0,.32);border:1px solid var(--host-popup-color,var(--gold))}
+.host-popup-confirm{width:100%;margin-top:28px;padding:16px!important;font-size:1.15rem!important}
+.host-popup-modal[data-variant="success"]{--host-popup-color:var(--green)}.host-popup-modal[data-variant="failure"],.host-popup-modal[data-variant="warning"]{--host-popup-color:var(--accent)}.host-popup-modal[data-variant="gift"]{--host-popup-color:#c68cff}.host-popup-modal[data-variant="joker"]{--host-popup-color:var(--gold)}.host-popup-modal[data-variant="info"]{--host-popup-color:#62a9ff}
 .modal h3{font-size:1.05rem;margin-bottom:16px;color:var(--gold)}
 
 /* JOKER LIGHTBOX */
@@ -933,6 +942,18 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 </div>
 
 <!-- Point Settings -->
+<!-- Zentrale, ausschließlich per Button schließbare Host-Meldung -->
+<div class="modal-overlay host-popup-overlay" id="modal-host-popup" role="alertdialog" aria-modal="true" aria-labelledby="host-popup-title">
+  <div class="modal host-popup-modal" id="host-popup-modal" data-variant="info">
+    <div class="host-popup-icon" id="host-popup-icon">ℹ️</div>
+    <h3 class="host-popup-title" id="host-popup-title">Hinweis</h3>
+    <div id="host-popup-player"></div>
+    <div class="host-popup-body" id="host-popup-body"></div>
+    <div class="host-popup-points" id="host-popup-points" hidden></div>
+    <button class="btn btn-gold host-popup-confirm" id="host-popup-confirm" onclick="confirmCurrentHostPopup()">Verstanden</button>
+  </div>
+</div>
+
 <!-- Joker Modal -->
 <div class="modal-overlay" id="modal-joker">
 <div class="modal">
@@ -940,7 +961,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   <p id="modal-joker-desc" style="font-size:.87rem;color:var(--muted);line-height:1.5;margin-bottom:14px"></p>
   <div id="modal-joker-extra"></div>
   <div class="modal-actions">
-    <button class="btn btn-ghost" onclick="closeModal('modal-joker')">Abbrechen</button>
+    <button class="btn btn-ghost" onclick="cancelPendingHostJokerRequest()">Abbrechen</button>
     <button class="btn btn-gold" onclick="confirmJoker()">✅ Einsetzen</button>
   </div>
 </div>
@@ -1123,7 +1144,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px">Weise jeden Spieler einem Team zu.</p>
   <div id="twist-assign-content"></div>
   <div class="modal-actions">
-    <button class="btn btn-ghost" onclick="closeModal('modal-twist-assign')">Abbrechen</button>
+    <button class="btn btn-ghost" onclick="cancelTwistAssignment()">Abbrechen</button>
     <button class="btn btn-primary" onclick="confirmTwistAssignment()">✅ Teams bestätigen</button>
   </div>
 </div>
@@ -1432,6 +1453,9 @@ let state = {
   currentVoteWinner:null,
   currentVoteDisplayOrder:[],
   pendingTipster:null,
+  hostResolutionPending:false,
+  hostPopupBacklog:[],
+  _processedHostPopupIds:{},
   marathonScope:'time',
   timeLimit:120,
   configuredGameCount:5,
@@ -1451,6 +1475,134 @@ let coverDataUrl = '';
 let coverOriginalDataUrl = '';
 let resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
 let tournamentHomeLock = false;
+
+// Zentrale Host-Popup-Warteschlange. Die Einträge enthalten nur bereits fertige
+// Darstellungstexte; Spiellogik und Punkte werden niemals beim Bestätigen berechnet.
+const hostPopupQueue = [];
+let hostPopupActive = false;
+let currentHostPopup = null;
+let hostJokerRequestQueue = [];
+let activeHostJokerRequest = null;
+
+function getHostPopupPlayerColor(playerName) {
+  const player = state.players?.find(p => p.name === playerName);
+  return player ? getPlayerColorHex(player.color) : '#ffffff';
+}
+
+function persistHostPopupQueue() {
+  state.hostPopupBacklog = [currentHostPopup, ...hostPopupQueue].filter(Boolean).map(p => ({...p, onConfirm:undefined}));
+}
+
+function queueHostPopup(config) {
+  const popup = {
+    id: config.id || `host-popup-${uid()}`,
+    icon: config.icon || 'ℹ️',
+    title: config.title || 'Hinweis',
+    message: config.message || '',
+    playerName: config.playerName || '',
+    points: config.points || '',
+    variant: config.variant || 'info',
+    buttonLabel: config.buttonLabel || 'Verstanden',
+    resolution: !!config.resolution,
+    afterConfirm: config.afterConfirm || '',
+    ts: config.ts || Date.now(),
+    onConfirm: typeof config.onConfirm === 'function' ? config.onConfirm : null
+  };
+  state._processedHostPopupIds ||= {};
+  if (state._processedHostPopupIds[popup.id] || currentHostPopup?.id === popup.id || hostPopupQueue.some(item => item.id === popup.id)) return false;
+  hostPopupQueue.push(popup);
+  hostPopupQueue.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+  if (popup.resolution) state.hostResolutionPending = true;
+  persistHostPopupQueue();
+  if (typeof saveCurrentToLS === 'function') saveCurrentToLS();
+  showNextHostPopup();
+  return true;
+}
+
+function showNextHostPopup() {
+  if (hostPopupActive || !hostPopupQueue.length) {
+    if (!hostPopupActive && !hostPopupQueue.length) finishHostResolutionQueueIfReady();
+    return;
+  }
+  hostPopupActive = true;
+  currentHostPopup = hostPopupQueue.shift();
+  const popup = currentHostPopup;
+  const modal = document.getElementById('host-popup-modal');
+  modal.dataset.variant = popup.variant;
+  document.getElementById('host-popup-icon').textContent = popup.icon;
+  document.getElementById('host-popup-title').textContent = popup.title;
+  document.getElementById('host-popup-body').textContent = popup.message;
+  const player = document.getElementById('host-popup-player');
+  player.innerHTML = popup.playerName ? `<span class="host-popup-player" style="--player-popup-color:${getHostPopupPlayerColor(popup.playerName)}">${esc(popup.playerName)}</span>` : '';
+  const points = document.getElementById('host-popup-points');
+  points.hidden = !popup.points;
+  points.textContent = popup.points || '';
+  document.getElementById('host-popup-confirm').textContent = popup.buttonLabel;
+  document.getElementById('modal-host-popup').classList.add('open');
+  persistHostPopupQueue();
+}
+
+function confirmCurrentHostPopup() {
+  if (!hostPopupActive || !currentHostPopup) return;
+  const popup = currentHostPopup;
+  document.getElementById('modal-host-popup').classList.remove('open');
+  state._processedHostPopupIds ||= {};
+  state._processedHostPopupIds[popup.id] = Date.now();
+  hostPopupActive = false;
+  currentHostPopup = null;
+  persistHostPopupQueue();
+  if (popup.afterConfirm === 'startRevenge') finishQueuedRevengeStart();
+  try { popup.onConfirm?.(); } catch (error) { console.error('[host popup confirm]', error); }
+  saveCurrentToLS();
+  showNextHostPopup();
+}
+
+function finishHostResolutionQueueIfReady() {
+  if (!state.hostResolutionPending) return;
+  if (currentHostPopup?.resolution || hostPopupQueue.some(p => p.resolution)) return;
+  state.hostResolutionPending = false;
+  state.hostPopupBacklog = [];
+  saveCurrentToLS();
+  renderAll();
+  if (state._endScreenPending) {
+    state._endScreenPending = false;
+    _finishEndScreen();
+    return;
+  }
+  checkVetoAutoTrigger();
+}
+
+function restoreHostPopupQueue() {
+  const saved = Array.isArray(state.hostPopupBacklog) ? state.hostPopupBacklog : [];
+  state.hostPopupBacklog = [];
+  saved.forEach(popup => queueHostPopup(popup));
+  if (!saved.length && state.hostResolutionPending) state.hostResolutionPending = false;
+}
+
+function enqueueHostJokerRequest(actionKey, playerName, jokerId, ts) {
+  if (hostJokerRequestQueue.some(r => r.actionKey === actionKey) || activeHostJokerRequest?.actionKey === actionKey) return;
+  hostJokerRequestQueue.push({actionKey, playerName, jokerId, ts:ts || Date.now()});
+  hostJokerRequestQueue.sort((a,b) => a.ts - b.ts);
+  showNextHostJokerRequest();
+}
+
+function showNextHostJokerRequest() {
+  if (activeHostJokerRequest || !hostJokerRequestQueue.length) return;
+  activeHostJokerRequest = hostJokerRequestQueue.shift();
+  openJokerModal(activeHostJokerRequest.playerName, activeHostJokerRequest.jokerId);
+}
+
+function finishHostJokerRequest() {
+  activeHostJokerRequest = null;
+  showNextHostJokerRequest();
+}
+
+function cancelPendingHostJokerRequest() {
+  closeModal('modal-joker');
+  pendingJokerPlayer = null;
+  pendingJokerId = null;
+  finishHostJokerRequest();
+}
 
 function ensureFeatureSettings(source = state) {
   source.settings = {
@@ -1533,6 +1685,17 @@ function resetMarathonRuntime(options = {}) {
   state.currentGameInstanceId = null;
   state.activeDoubleOrNothing = {};
   state._processedDoubleActions = {};
+  state.hostResolutionPending = false;
+  state.hostPopupBacklog = [];
+  state._processedHostPopupIds = {};
+  state._pendingRevengeStart = null;
+  state._endGoalsEvaluated = false;
+  state._endScreenPending = false;
+  hostPopupQueue.length = 0;
+  hostPopupActive = false;
+  currentHostPopup = null;
+  hostJokerRequestQueue = [];
+  activeHostJokerRequest = null;
 
   // Ergebnis-/Joker-Modals und ersetzte Endscreen-HTML zurücksetzen.
   pendingJokerPlayer = null;
@@ -1632,6 +1795,12 @@ function buildSessionSnapshot(name, finalize=false) {
     currentVoteWinner: state.currentVoteWinner || null,
     currentVoteDisplayOrder: state.currentVoteDisplayOrder || [],
     pendingTipster: state.pendingTipster || null,
+    hostResolutionPending: !!state.hostResolutionPending,
+    hostPopupBacklog: state.hostPopupBacklog || [],
+    processedHostPopupIds: state._processedHostPopupIds || {},
+    pendingRevengeStart: state._pendingRevengeStart || null,
+    endGoalsEvaluated: !!state._endGoalsEvaluated,
+    endScreenPending: !!state._endScreenPending,
     marathonScope: normalizeMarathonScope(state.marathonScope),
     timeLimit: state.timeLimit,
     configuredGameCount: state.configuredGameCount,
@@ -2859,6 +3028,10 @@ function rerollRule() {
 //  GAME FLOW
 // ═══════════════════════════════════════════════════════════
 function nextGame() {
+  if (state.hostResolutionPending || currentHostPopup?.resolution || hostPopupQueue.some(p => p.resolution)) {
+    showToast('Bitte zuerst alle Ergebnis-Auflösungen bestätigen.');
+    return;
+  }
   if (isTipsterChoosing()) {
     showToast('Bitte warten: Tipp-Joker-Auswahl läuft noch.');
     switchTab('tab-current');
@@ -2907,6 +3080,7 @@ function canShowRandomEvent() {
 }
 
 function _doNextGame() {
+  if (state.hostResolutionPending) return;
   state.postGameWindow = false;
   state.currentIdx++;
   while (state.currentIdx < state.plan.length && state.plan[state.currentIdx].done) state.currentIdx++;
@@ -2922,6 +3096,7 @@ function _doNextGame() {
 }
 
 function startGameVoteRound() {
+  if (state.hostResolutionPending) return;
   state.postGameWindow = false;
   state.currentGameStarted = false;
   state.preGameWindow = false;
@@ -3449,7 +3624,7 @@ function getTipsterBonusForGameType(type) {
   return type === 'ffa' ? 4 : 2;
 }
 
-function startPendingTipster(playerName) {
+function startPendingTipster(playerName, expected = {}) {
   if (state.pendingTipster) return false;
   const entry = getCurrentGameEntry();
   if (!entry || entry.done) return false;
@@ -3461,10 +3636,14 @@ function startPendingTipster(playerName) {
     gameIndex: state.currentIdx,
     gameId: entry.gameId,
     gameName: g?.name || '',
-    actionId: uid(),
-    ts: Date.now()
+    actionId: expected.actionId || uid(),
+    ts: expected.ts || Date.now()
   };
-  showToast(`🔮 ${playerName} zieht seinen Tipp-Joker und stimmt nun ab!`);
+  queueHostPopup({
+    id:`${state.pendingTipster.actionId}:start`, icon:'🔮', title:'Tipp-Joker eingesetzt',
+    playerName, variant:'joker', buttonLabel:'Verstanden',
+    message:`${playerName} zieht seinen Tipp-Joker und stimmt nun ab!\n\nDas Spiel kann erst gestartet werden, wenn ${playerName} seinen Tipp bestätigt hat.`
+  });
   renderCurrentGame();
   renderJokerArea();
   renderJokerStatusBar();
@@ -3485,7 +3664,10 @@ function lockPendingTipsterPick(playerName, pickedPlayerName) {
   pending.lockedAt = Date.now();
   const pj = state.jokers?.[playerName]?.find(j => j.id === 'tipster');
   if (pj) pj.used = true;
-  showToast(`🔮 ${playerName} hat seinen geheimen Tipp abgegeben.`);
+  queueHostPopup({
+    id:`${pending.actionId}:locked`, icon:'🔮', title:'Geheimer Tipp gespeichert',
+    playerName, variant:'success', message:`${playerName} hat seinen geheimen Tipp abgegeben.\n\nDer Tipp selbst bleibt bis zur Auflösung geheim.`, buttonLabel:'Weiter'
+  });
   renderCurrentGame();
   renderJokerArea();
   renderJokerStatusBar();
@@ -3526,15 +3708,13 @@ function resolvePendingTipster(type, entry, pointsMap) {
 
 function showTipsterResolution(result) {
   if (!result) return;
-  const content = `
-    <div style="text-align:center;padding:18px;border-radius:14px;background:${result.correct?'linear-gradient(135deg,rgba(78,205,196,.16),rgba(255,215,0,.1))':'rgba(233,69,96,.1)'};border:2px solid ${result.correct?'var(--green)':'var(--accent)'}">
-      <div style="font-size:3rem;margin-bottom:8px">🔮</div>
-      <div style="font-size:1.15rem;font-weight:900;color:var(--gold);margin-bottom:12px">${esc(result.playerName)}s Tipp: ${esc(result.pickedPlayerName || '?')}</div>
-      <div style="font-size:.95rem;margin-bottom:10px">🏆 Tatsächlicher Sieger: <strong>${esc((result.actualWinners || []).join(', ') || 'niemand')}</strong></div>
-      <div style="font-size:1.05rem;font-weight:900;color:${result.correct?'var(--green)':'var(--accent)'}">${result.correct ? `Richtig! ${esc(result.playerName)} erhält +${result.bonus} Punkte.` : 'Falsch - keine Bonuspunkte.'}</div>
-    </div>`;
-  document.getElementById('double-result-content').innerHTML = content;
-  openModal('modal-double-result');
+  queueHostPopup({
+    id:result.popupId || `tipster-resolution-${state.history.at(-1)?.id || uid()}-${result.playerName}`,
+    icon:'🔮', title:'Auflösung des Tipp-Jokers', playerName:result.playerName,
+    variant:result.correct ? 'success' : 'failure', resolution:true,
+    message:`${result.playerName} tippte auf ${result.pickedPlayerName || '?'}.\n\nTatsächlicher Gewinner: ${(result.actualWinners || []).join(', ') || 'niemand'}.`,
+    points:result.correct ? `Richtig! ${result.playerName} erhält +${result.bonus} Punkte.` : 'Falsch – keine Bonuspunkte.'
+  });
 }
 
 function makeGameVoteRecord(player, action) {
@@ -3815,16 +3995,14 @@ function checkUnderdogAuto() {
     return p.name;
   });
 
-  document.getElementById('comeback-msg').textContent =
-    `⚡ Halbzeit! ${names.join(' & ')} ${names.length>1?'liegen':'liegt'} auf dem letzten Platz und ${names.length>1?'bekommen':'bekommt'} automatisch +3 Punkte!`;
-  document.getElementById('comeback-joker-display').innerHTML =
-    '<div style="text-align:center;padding:16px;background:linear-gradient(135deg,rgba(255,215,0,.15),rgba(233,69,96,.1));border-radius:12px;border:2px solid var(--gold)">'
-    + '<div style="font-size:3rem">👑</div>'
-    + '<div style="font-weight:800;font-size:1.1rem;color:var(--gold);margin-top:8px">Underdog-Bonus!</div>'
-    + '<div style="font-size:.85rem;color:var(--text);margin-top:6px">+3 Punkte für ' + esc(names.join(' & ')) + '</div></div>';
+  queueHostPopup({
+    id:`underdog-${state.history.at(-1)?.id || uid()}-${names.join('-')}`, icon:'👑', title:'Underdog-Bonus',
+    variant:'success', resolution:true,
+    message:`Halbzeit! ${names.join(' & ')} ${names.length>1?'liegen':'liegt'} auf dem letzten Platz.`,
+    points:`+3 Punkte für ${names.join(' & ')}`
+  });
   soundComeback();
   haptic([100,50,100,50,200]);
-  openModal('modal-comeback');
   renderAll();
   saveCurrentToLS();
 }
@@ -4102,7 +4280,7 @@ function submitResult(type) {
       else if (type==='coop') won = resultSel.coop==='win';
       const before = pointsMap[p.name]||0;
       pointsMap[p.name] = won ? before*2 : 0;
-      doubleResults.push({name:p.name, won, before, after:pointsMap[p.name]});
+      doubleResults.push({name:p.name, won, before, after:pointsMap[p.name], place:type==='ffa' ? resultSel.ffa[p.name] : null});
     }
   });
 
@@ -4111,6 +4289,8 @@ function submitResult(type) {
     id: uid(), gameId: g.id, gameName: g.name, type: g.type, pts: {...pointsMap}, special: specialW,
     isRevanche: !!(entry.isRevanche),
   });
+  const completedHistoryId = state.history[state.history.length - 1].id;
+  state.hostResolutionPending = true;
   trackPlayedGameStats(entry, g);
   entry.done = true;
   state.postGameWindow = true;
@@ -4128,34 +4308,33 @@ function submitResult(type) {
   haptic([30,20,60]);
   showToast('Punkte gespeichert! 🎉');
   switchTab('tab-score');
-  // Show Doppelt-oder-Nichts results prominently
-  if (tipsterResult) setTimeout(()=>showTipsterResolution(tipsterResult), 450);
-  if (doubleResults.length) setTimeout(()=>showDoubleResults(doubleResults), tipsterResult ? 2200 : 500);
-  // Check secret goals live
-  setTimeout(()=>checkSecretGoalsLive(), 400);
-  setTimeout(()=>checkComeback(), 800);
-  setTimeout(()=>checkUnderdogAuto(), 1200);
-  setTimeout(()=>checkVetoAutoTrigger(), 1600);
+  // Alle Auswertungen sind jetzt abgeschlossen, bevor die fertigen Präsentationstexte
+  // in die Queue gelangen. Bestätigen führt keinerlei Punkteberechnung aus.
+  if (tipsterResult) showTipsterResolution({...tipsterResult, popupId:`tipster-resolution-${completedHistoryId}-${tipsterResult.playerName}`});
+  if (doubleResults.length) showDoubleResults(doubleResults);
+  Object.entries(specialW).forEach(([name,count]) => queueHostPopup({
+    id:`special-resolution-${completedHistoryId}-${name}`, icon:'⭐', title:'Sonderbonus',
+    playerName:name, variant:'success', resolution:true,
+    message:`${name} hat ${count > 1 ? `${count} Sonderregeln` : 'die Sonderregel'} erfüllt.`,
+    points:`+${count * pts.special} Punkte`
+  }));
+  checkSecretGoalsLive();
+  checkComeback();
+  checkUnderdogAuto();
+  finishHostResolutionQueueIfReady();
   setTimeout(()=>refreshQRIfOpen(), 200);
   updateProgressBar();
 }
 
 function showDoubleResults(results) {
-  const content = results.map(r => `
-    <div style="text-align:center;padding:14px;border-radius:12px;margin-bottom:10px;
-      background:${r.won ? 'linear-gradient(135deg,rgba(78,205,196,.15),rgba(255,215,0,.1))' : 'rgba(233,69,96,.1)'};
-      border:2px solid ${r.won ? 'var(--gold)' : 'var(--accent)'}">
-      <div style="font-size:2.5rem">${r.won ? '🎯🔥' : '💀😬'}</div>
-      <div style="font-weight:800;font-size:1.1rem;color:${r.won?'var(--gold)':'var(--accent)'};margin:6px 0">
-        ${r.won ? 'DOPPELT!' : 'NICHTS!'}
-      </div>
-      <div style="font-weight:700;font-size:.95rem">${r.name}</div>
-      <div style="font-size:.85rem;color:var(--muted);margin-top:4px">
-        ${r.won ? `${r.before} → <strong style="color:var(--gold)">${r.after} Punkte</strong> 🎉` : `<strong style="color:var(--accent)">0 Punkte</strong> statt ${r.before}`}
-      </div>
-    </div>`).join('');
-  document.getElementById('double-result-content').innerHTML = content;
-  openModal('modal-double-result');
+  const historyId = state.history.at(-1)?.id || uid();
+  results.forEach(r => queueHostPopup({
+    id:`double-resolution-${historyId}-${r.name}`, icon:'🎲',
+    title:`${r.name}s Doppelt-oder-nichts-Joker`, playerName:r.name,
+    variant:r.won ? 'success' : 'failure', resolution:true,
+    message:`${r.place ? `${r.name} erreichte Platz ${r.place}.\n\n` : ''}${r.won ? 'Erfolg: Die Punkte werden gemäß Jokerregel verdoppelt.' : 'Kein Erfolg: Wirkung gemäß bestehender Jokerregel.'}`,
+    points:r.won ? `${r.before} → ${r.after} Punkte` : `0 Punkte statt ${r.before}`
+  }));
   if (results.some(r=>r.won)) { soundComeback(); haptic([50,30,100,30,200]); }
   else { playTone(200, 0.4, 'sawtooth', 0.2); haptic([200,100,200]); }
 }
@@ -4253,25 +4432,25 @@ function getLastCompletedGameForRevenge(source = state) {
   return game ? {history:lastHistory, game} : null;
 }
 
-function showRevengeHostPopup(playerName, game, onComplete) {
-  const player = findPlayerByVoteName(playerName);
-  const color = getPlayerColorHex(player?.color);
-  const overlay = document.getElementById('modal-revenge-showcase');
-  const content = document.getElementById('revenge-showcase-content');
-  if (!overlay || !content) return onComplete?.();
-  overlay.style.setProperty('--revenge-color', color);
-  content.innerHTML = `<div class="revenge-showcase" style="--revenge-color:${color}">
-    <div class="revenge-showcase-icon">🔄</div>
-    <div class="revenge-showcase-player" id="revenge-showcase-player">${esc(playerName)} zieht den Revanche-Joker!</div>
-    <div class="revenge-showcase-game">${esc(game.name)} wird noch einmal gespielt!</div>
-    <div class="revenge-showcase-note">Die bisherigen Punkte bleiben bestehen.</div>
-  </div>`;
-  overlay.classList.add('open');
-  setTimeout(() => {
-    overlay.classList.remove('open');
-    content.innerHTML = '';
-    onComplete?.();
-  }, 3800);
+function showRevengeHostPopup(playerName, game) {
+  queueHostPopup({
+    id:`joker-action-${state._pendingRevengeStart?.actionId || uid()}`, icon:'🔄', title:'Revanche-Joker eingesetzt',
+    playerName, variant:'joker', message:`${playerName} zieht den Revanche-Joker!\n\n${game.name} wird erneut gespielt. Die bisherigen Punkte bleiben bestehen.`,
+    buttonLabel:'Weiter', afterConfirm:'startRevenge', ts:state._pendingRevengeStart?.ts || Date.now()
+  });
+}
+
+function finishQueuedRevengeStart() {
+  if (!state._pendingRevengeStart) return;
+  const pending = state._pendingRevengeStart;
+  const game = state.games.find(g => g.id === pending.gameId);
+  state._pendingRevengeStart = null;
+  state._revengePending = false;
+  _doNextGame();
+  renderAll();
+  saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+  if (game) showToast(`🔄 ${game.name} ist als neue Revanche-Partie bereit.`);
 }
 
 function executeRevengeJoker(playerName, expected = {}) {
@@ -4301,6 +4480,7 @@ function executeRevengeJoker(playerName, expected = {}) {
   state._processedRevengeActions[actionId] = Date.now();
   state.postGameWindow = false;
   state._revengePending = true;
+  state._pendingRevengeStart = {actionId, playerName:player.name, gameId:last.game.id, ts:expected.ts || Date.now()};
 
   const revengeEntry = {
     gameId: last.game.id,
@@ -4316,14 +4496,7 @@ function executeRevengeJoker(playerName, expected = {}) {
   saveCurrentToLS();
   if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
 
-  showRevengeHostPopup(player.name, last.game, () => {
-    state._revengePending = false;
-    _doNextGame();
-    renderAll();
-    saveCurrentToLS();
-    if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
-    showToast(`🔄 ${last.game.name} ist als neue Revanche-Partie bereit.`);
-  });
+  showRevengeHostPopup(player.name, last.game);
   return true;
 }
 
@@ -4376,7 +4549,11 @@ function executeDoubleOrNothingJoker(playerName, expected = {}) {
   renderJokerStatusBar();
   saveCurrentToLS();
   if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
-  showToast(`🎲 ${player.name} setzt für ${game.name} Doppelt oder nichts ein!`);
+  queueHostPopup({
+    id:`joker-action-${actionId}`, icon:'🎲', title:'Doppelt oder nichts eingesetzt',
+    playerName:player.name, variant:'joker', ts:expected.ts || Date.now(),
+    message:`${player.name} setzt für ${game.name} den Doppelt-oder-nichts-Joker ein!`, buttonLabel:'Verstanden'
+  });
   return true;
 }
 
@@ -4438,6 +4615,7 @@ function confirmJoker() {
   if (!availability.allowed) {
     showToast(availability.reason);
     closeModal('modal-joker');
+    finishHostJokerRequest();
     return;
   }
 
@@ -4445,7 +4623,7 @@ function confirmJoker() {
   const remaining = state.plan.filter(e=>!e.done).length;
   if (remaining === 0 && j !== 'revenge') {
     showToast('Der Marathon ist beendet – nur noch Revanche möglich!');
-    closeModal('modal-joker'); return;
+    closeModal('modal-joker'); finishHostJokerRequest(); return;
   }
 
   if (j==='tipster') {
@@ -4456,6 +4634,7 @@ function confirmJoker() {
       fbPushState();
     }
     closeModal('modal-joker');
+    finishHostJokerRequest();
     return;
   }
 
@@ -4529,6 +4708,8 @@ function confirmJoker() {
     renderAll();
     saveCurrentToLS();
     if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+    queueHostPopup({id:`joker-action-${activeHostJokerRequest?.actionKey || uid()}`,icon:'⏭️',title:'Skip-Joker eingesetzt',playerName:p,variant:'joker',message:`${p} setzt den Skip-Joker ein. ${skippedGame?.name || 'Das aktuelle Spiel'} wird übersprungen.`,buttonLabel:'Weiter'});
+    finishHostJokerRequest();
     return;
   }
 
@@ -4540,6 +4721,13 @@ function confirmJoker() {
   renderAll();
   saveCurrentToLS();
   if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+  const usedDef = getJokerDef(j);
+  queueHostPopup({
+    id:`joker-action-${activeHostJokerRequest?.actionKey || uid()}`, icon:usedDef?.icon || '🃏',
+    title:`${usedDef?.name || 'Joker'} eingesetzt`, playerName:p, variant:'joker',
+    message:`${p} setzt den ${usedDef?.name || 'Joker'} ein.`, buttonLabel:'Verstanden'
+  });
+  finishHostJokerRequest();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4803,6 +4991,12 @@ function loadSession(id) {
   state.currentVoteWinner = s.currentVoteWinner || null;
   state.currentVoteDisplayOrder = Array.isArray(s.currentVoteDisplayOrder) ? s.currentVoteDisplayOrder : [];
   state.pendingTipster = s.pendingTipster || null;
+  state.hostResolutionPending = !!s.hostResolutionPending;
+  state.hostPopupBacklog = Array.isArray(s.hostPopupBacklog) ? s.hostPopupBacklog : [];
+  state._processedHostPopupIds = s.processedHostPopupIds || {};
+  state._pendingRevengeStart = s.pendingRevengeStart || null;
+  state._endGoalsEvaluated = !!s.endGoalsEvaluated;
+  state._endScreenPending = !!s.endScreenPending;
   state.secretGoals  = s.secretGoals  || {};
   state.secretGoalExtras = s.secretGoalExtras || {};
   state.comebackGiven = s.comebackGiven || {};
@@ -4865,6 +5059,7 @@ function loadSession(id) {
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) renderJokerPickScreen();
   if (state._setupPhase === 'gameVote') window.renderGameVoteHost();
   else if (state.currentIdx >= 0) renderCurrentGame();
+  restoreHostPopupQueue();
   showToast(`Session „${s.name}" geladen ✓`);
 }
 
@@ -4988,6 +5183,10 @@ function openTournamentDetail(id) {
 //  END SCREEN
 // ═══════════════════════════════════════════════════════════
 function showEndScreen() {
+  if (state.hostResolutionPending || currentHostPopup?.resolution || hostPopupQueue.some(p => p.resolution)) {
+    showToast('Der Abschluss wartet auf die Bestätigung aller Auflösungen.');
+    return;
+  }
   state.postGameWindow = false;
   state.currentGameStarted = false;
   state.preGameWindow = false;
@@ -5153,8 +5352,16 @@ function skipVeto() {
 }
 
 function _finishEndScreen() {
-  // Secret goals reveal (updates scores before display)
-  checkSecretGoalsEnd();
+  // Endziele werden genau einmal berechnet und vor dem Endscreen einzeln bestätigt.
+  if (!state._endGoalsEvaluated && areSecretGoalsEnabled()) {
+    state._endGoalsEvaluated = true;
+    state._endScreenPending = true;
+    state.hostResolutionPending = true;
+    checkSecretGoalsEnd();
+    if (currentHostPopup?.resolution || hostPopupQueue.some(p => p.resolution)) return;
+    state.hostResolutionPending = false;
+    state._endScreenPending = false;
+  }
   state._setupPhase = 'finished';
   state._marathonFinished = true;
 
@@ -6207,8 +6414,15 @@ function confirmTwistAssignment() {
   renderAll();
   saveCurrentToLS();
   if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
-  showToast('🎭 Teams neu zugewiesen!');
+  queueHostPopup({id:`joker-action-${activeHostJokerRequest?.actionKey || uid()}`,icon:'🎭',title:'Rollentausch-Joker eingesetzt',playerName:twistPlayerName,variant:'joker',message:`${twistPlayerName} setzt den Rollentausch-Joker ein. Die Teams wurden neu zugewiesen.`,buttonLabel:'Verstanden'});
+  finishHostJokerRequest();
   twistEntry = null; twistGame = null; twistPlayerName = null;
+}
+
+function cancelTwistAssignment() {
+  closeModal('modal-twist-assign');
+  twistEntry = null; twistGame = null; twistPlayerName = null;
+  finishHostJokerRequest();
 }
 
 // ── Joker-Meister text formatting ────────────────────────────
@@ -6832,18 +7046,14 @@ function checkComeback() {
       playerGoal.text += '\n✅ Geschenkte Joker dürfen genutzt werden!';
     }
   }
-  document.getElementById('comeback-msg').textContent =
-    `${loser.name} liegt ${gap} Punkte zurück – das Schicksal greift ein!`;
-  document.getElementById('comeback-joker-display').innerHTML =
-    `<div style="width:100%"><div style="font-size:1.05rem;font-weight:950;color:var(--gold);margin-bottom:14px">🎁 ${esc(loser.name)} bekommt einen Joker geschenkt!</div>
-    <div style="text-align:center;padding:12px;background:var(--surface);border-radius:10px;border:2px solid var(--gold);min-width:120px">
-      <div style="font-size:2rem">${bonus.icon}</div>
-      <div style="font-weight:700;margin-top:4px">${bonus.name}</div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Geschenkter Joker: ${bonus.name}</div>
-    </div></div>`;
+  queueHostPopup({
+    id:`comeback-gift-${state.history.at(-1)?.id || uid()}-${loser.name}`, icon:'🃏', title:'Comeback-Geschenk',
+    playerName:loser.name, variant:'gift', resolution:true,
+    message:`${loser.name} liegt ${gap} Punkte zurück – das Schicksal greift ein!\n\n${loser.name} erhält durch das Comeback einen ${bonus.name} geschenkt.`,
+    points:`Geschenkter Joker: ${bonus.name}`
+  });
   soundComeback();
   haptic([100,50,100,50,200]);
-  openModal('modal-comeback');
   renderJokerArea();
   renderJokerStatusBar();
   saveCurrentToLS();
@@ -7029,31 +7239,22 @@ function soundGoalAchieved() {
   playTone(1047,0.6,'sine',0.35,0.7);
 }
 
-let goalAchievedQueue = [];
 function showGoalAchievedModal(playerName, goal) {
   if (!areSecretGoalsEnabled()) return;
-  goalAchievedQueue.push({playerName, goal});
-  if (goalAchievedQueue.length === 1) processGoalAchievedQueue();
+  queueHostPopup({
+    id:`goal-achieved-${state.history.at(-1)?.id || uid()}-${playerName}-${goal.id}`,
+    icon:goal.icon || '🎯', title:'Geheimziel erfüllt!', playerName,
+    variant:'success', resolution:true, message:goal.text,
+    points:`+${goal.reward} Punkte wurden einmalig addiert.`
+  });
 }
 
 function processGoalAchievedQueue() {
-  if (!areSecretGoalsEnabled()) { goalAchievedQueue = []; return; }
-  if (!goalAchievedQueue.length) return;
-  const {playerName, goal} = goalAchievedQueue[0];
-  const el = document.getElementById('modal-goal-achieved');
-  if (!el) { goalAchievedQueue.shift(); return; }
-  document.getElementById('goal-achieved-player').textContent = playerName;
-  document.getElementById('goal-achieved-icon').textContent = goal.icon;
-  document.getElementById('goal-achieved-text').textContent = goal.text;
-  document.getElementById('goal-achieved-reward').textContent = `+${goal.reward} Punkte wurden sofort addiert!`;
-  openModal('modal-goal-achieved');
+  showNextHostPopup();
 }
 
 function closeGoalAchievedModal() {
-  closeModal('modal-goal-achieved');
-  goalAchievedQueue.shift();
-  if (goalAchievedQueue.length) setTimeout(processGoalAchievedQueue, 400);
-  else { renderAll(); saveCurrentToLS(); }
+  confirmCurrentHostPopup();
 }
 
 function checkSecretGoalsEnd() {
@@ -7096,18 +7297,13 @@ function checkSecretGoalsEnd() {
     return {player:p, goal, achieved, extra};
   }).filter(r=>r.goal);
 
-  const c = document.getElementById('goals-reveal-content');
-  if (!c) return;
-  c.innerHTML = reveals.map(r => `
-    <div class="secret-goal-reveal">
-      <div class="secret-goal-badge ${r.achieved?'achieved':'failed'}">${r.achieved?'✓ Geschafft!':'✗ Nicht erreicht'}</div>
-      <div style="font-size:1.5rem;margin-bottom:6px">${r.goal.icon}</div>
-      <div style="font-weight:700;margin-bottom:4px">${esc(r.player.name)}</div>
-      <div style="font-size:.85rem;color:var(--muted);margin-bottom:4px;white-space:pre-line">${esc(r.goal.text)}</div>
-      ${r.extra}
-      ${r.achieved ? `<div style="font-size:.82rem;color:var(--green);font-weight:700;margin-top:4px">+${r.goal.reward} Punkte vergeben 🎉</div>` : ''}
-    </div>`).join('');
-  openModal('modal-goals-reveal');
+  reveals.forEach(r => queueHostPopup({
+    id:`goal-end-${state.history.at(-1)?.id || 'marathon'}-${r.player.name}-${r.goal.id}`,
+    icon:r.goal.icon || '🎯', title:r.achieved ? 'Geheimziel erfüllt!' : 'Geheimziel nicht erfüllt',
+    playerName:r.player.name, variant:r.achieved ? 'success' : 'failure', resolution:true,
+    message:r.goal.text,
+    points:r.achieved ? `+${r.goal.reward} Punkte wurden einmalig vergeben.` : 'Keine Bonuspunkte.'
+  }));
 }
 
 let secretGoalQueue = [];
@@ -7325,7 +7521,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
       // Never close protected workflow modals by clicking outside.
-      const blocked = ['modal-add-game','modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick','modal-all-games-banned','modal-game-vote-roulette'];
+      const blocked = ['modal-add-game','modal-goal-handover','modal-secret-goal','modal-veto-slot','modal-veto-anim','modal-veto-pick','modal-all-games-banned','modal-game-vote-roulette','modal-host-popup'];
       if (blocked.includes(overlay.id)) return;
       if (e.target===overlay) overlay.classList.remove('open');
     });
@@ -8153,6 +8349,7 @@ window.fbPushState = function fbPushState() {
     currentGameInstanceId: state.currentGameInstanceId || null,
     settings: {...ensureFeatureSettings()},
     postGameWindow: !!state.postGameWindow,
+    hostResolutionPending: !!state.hostResolutionPending,
     ts: Date.now(),
     hostAlive: true,
   };
@@ -8275,7 +8472,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
         markProcessed();
         return;
       }
-      startPendingTipster(p.name);
+      startPendingTipster(p.name, {actionId:actionKey, ts:action.ts});
       fbPushState();
       markProcessed();
       return;
@@ -8301,7 +8498,8 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       const accepted = !!p && executeRevengeJoker(p.name, {
         actionId: actionKey,
         gameId: action.gameId,
-        historyEntryId: action.historyEntryId || null
+        historyEntryId: action.historyEntryId || null,
+        ts:action.ts
       });
       if (!accepted) console.warn('[revenge rejected]', action);
       markProcessed();
@@ -8319,7 +8517,8 @@ window.fbListenGuestActions = function fbListenGuestActions() {
       const accepted = !!p && executeDoubleOrNothingJoker(p.name, {
         actionId:actionKey,
         gameId:action.gameId,
-        gameInstanceId:action.gameInstanceId
+        gameInstanceId:action.gameInstanceId,
+        ts:action.ts
       });
       if (!accepted) console.warn('[double rejected]', action);
       fbSessionRef.child(`doubleActionResults/${actionKey}`).set({
@@ -8344,8 +8543,7 @@ window.fbListenGuestActions = function fbListenGuestActions() {
         markProcessed();
         return;
       }
-      openJokerModal(p.name, action.jokerId);
-      showToast(`📱 ${p.name} möchte Joker einsetzen!`);
+      enqueueHostJokerRequest(actionKey, p.name, action.jokerId, action.ts);
       markProcessed();
       return;
     }
@@ -9719,6 +9917,11 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   window.finishMarioKartSelection = finishMarioKartSelection;
 
   document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && document.getElementById('modal-host-popup')?.classList.contains('open')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (event.key === 'Escape' && document.getElementById('modal-revenge-showcase')?.classList.contains('open')) {
       event.preventDefault();
       event.stopImmediatePropagation();
