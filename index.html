@@ -1291,6 +1291,26 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
   <div id="s-allgemein" class="settings-panel">
     <div class="theme-row">
       <div>
+        <div style="font-weight:600;font-size:.9rem">🎲 Zufalls-Events aktivieren</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:2px">Deaktivieren, wenn zwischen den Spielen keine zufälligen Ereignisse erscheinen sollen.</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="events-enabled-check" checked onchange="toggleEventsEnabled()"/>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="theme-row">
+      <div>
+        <div style="font-weight:600;font-size:.9rem">🎯 Geheimziele aktivieren</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:2px">Deaktivieren, wenn Spieler während des Marathons keine privaten Geheimziele erhalten sollen.</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="secret-goals-enabled-check" checked onchange="toggleSecretGoalsEnabled()"/>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="theme-row">
+      <div>
         <div style="font-weight:600;font-size:.9rem">🌓 Dark / Light Mode</div>
         <div style="font-size:.78rem;color:var(--muted);margin-top:2px">Helles Design für sonnige Räume</div>
       </div>
@@ -1378,6 +1398,7 @@ const DEFAULT_POINTS = {
 let pts = JSON.parse(JSON.stringify(DEFAULT_POINTS));
 
 let state = {
+  settings:{eventsEnabled:true,secretGoalsEnabled:true},
   players:[],
   games:[],
   gameCategories:[],
@@ -1424,6 +1445,23 @@ let coverDataUrl = '';
 let coverOriginalDataUrl = '';
 let resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
 let tournamentHomeLock = false;
+
+function ensureFeatureSettings(source = state) {
+  source.settings = {
+    ...(source.settings || {}),
+    eventsEnabled: source.settings?.eventsEnabled !== false,
+    secretGoalsEnabled: source.settings?.secretGoalsEnabled !== false
+  };
+  return source.settings;
+}
+
+function areEventsEnabled(source = state) {
+  return source?.settings?.eventsEnabled !== false;
+}
+
+function areSecretGoalsEnabled(source = state) {
+  return source?.settings?.secretGoalsEnabled !== false;
+}
 
 // ═══════════════════════════════════════════════════════════
 //  SCREEN MANAGEMENT
@@ -1551,6 +1589,7 @@ function buildSessionSnapshot(name, finalize=false) {
     name,
     date: new Date().toISOString(),
     finalized: finalize,
+    settings: {...ensureFeatureSettings()},
     players: state.players,
     scores: state.scores,
     history: state.history,
@@ -2305,6 +2344,8 @@ function openSettingsModal() {
   document.getElementById('theme-toggle-check').checked = document.body.classList.contains('light-mode');
   document.getElementById('sound-toggle-check').checked = soundEnabled;
   document.getElementById('haptic-toggle-check').checked = hapticEnabled;
+  document.getElementById('events-enabled-check').checked = areEventsEnabled();
+  document.getElementById('secret-goals-enabled-check').checked = areSecretGoalsEnabled();
   openModal('modal-settings');
 }
 
@@ -2844,7 +2885,7 @@ function hasNextPlayableGame() {
 }
 
 function canShowRandomEvent() {
-  return state.currentIdx < state.plan.length - 1 && hasNextPlayableGame();
+  return areEventsEnabled() && state.currentIdx < state.plan.length - 1 && hasNextPlayableGame();
 }
 
 function _doNextGame() {
@@ -3013,6 +3054,42 @@ function canUseRevengeJoker(data = state) {
     !data?._marathonFinished &&
     !data?.marathonFinished
   );
+}
+
+function persistFeatureSettings() {
+  ensureFeatureSettings();
+  saveLS();
+  if (hasActiveMarathonRuntime()) saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+}
+
+function toggleEventsEnabled() {
+  ensureFeatureSettings();
+  state.settings.eventsEnabled = !!document.getElementById('events-enabled-check')?.checked;
+  if (!areEventsEnabled() && document.getElementById('modal-event')?.classList.contains('open')) {
+    closeModal('modal-event');
+    if (pendingNextGame) {
+      pendingNextGame = false;
+      if (hasNextPlayableGame()) _doNextGame();
+      else showEndScreen();
+    }
+  }
+  persistFeatureSettings();
+}
+
+function toggleSecretGoalsEnabled() {
+  ensureFeatureSettings();
+  state.settings.secretGoalsEnabled = !!document.getElementById('secret-goals-enabled-check')?.checked;
+  if (!areSecretGoalsEnabled()) {
+    state.secretGoals = {};
+    state.secretGoalExtras = {};
+    state._secretGoalsAssigned = false;
+    goalAchievedQueue = [];
+    ['modal-secret-goal','modal-goal-handover','modal-goal-review-warn','modal-goal-review','modal-goal-achieved','modal-goals-reveal']
+      .forEach(id => closeModal(id));
+    renderJokerStatusBar();
+  }
+  persistFeatureSettings();
 }
 
 function isSelectionMode(source = state) {
@@ -4045,11 +4122,13 @@ function renderJokerStatusBar() {
 }
 
 function openGoalReview(playerName) {
+  if (!areSecretGoalsEnabled()) return;
   document.getElementById('goal-review-player-name').textContent = playerName;
   openModal('modal-goal-review-warn');
 }
 
 function showGoalReview() {
+  if (!areSecretGoalsEnabled()) { closeModal('modal-goal-review-warn'); return; }
   const playerName = document.getElementById('goal-review-player-name').textContent;
   const goal = state.secretGoals?.[playerName];
   if (!goal) { closeModal('modal-goal-review-warn'); return; }
@@ -4465,6 +4544,7 @@ function finishTournamentAndReturnHome(snapshot, name) {
     configuredGameCount: snapshot.configuredGameCount || 0,
     targetGameCount: snapshot.targetGameCount || snapshot.plan?.length || 0,
     actualGameCount: snapshot.history?.length || 0,
+    settings: snapshot.settings || {eventsEnabled:true, secretGoalsEnabled:true},
     timeLimit: snapshot.timeLimit || 0});
 
   tournamentHomeLock = true;
@@ -4536,6 +4616,10 @@ function loadSession(id) {
   const s = sessions[id];
   if (!s) return;
   tournamentHomeLock = false;
+  state.settings = {
+    eventsEnabled: s.settings?.eventsEnabled !== false,
+    secretGoalsEnabled: s.settings?.secretGoalsEnabled !== false
+  };
   state.players    = s.players || [];
   state.scores     = s.scores  || {};
   state.history    = s.history || [];
@@ -4574,6 +4658,10 @@ function loadSession(id) {
   state._vetoFromEndScreen = false;
   if (s.games) state.games = s.games;
   if (s.gameCategories) state.gameCategories = s.gameCategories;
+  if (!areSecretGoalsEnabled()) {
+    state.secretGoals = {};
+    state.secretGoalExtras = {};
+  }
   if (!canUseRevengeJoker(state)) state.postGameWindow = false;
   normalizeGameCategories();
   if (!state.targetGameCount) state.targetGameCount = isMarioKartMode()
@@ -4996,6 +5084,7 @@ function saveLS() {
     localStorage.setItem('sm_pts_v2', JSON.stringify(pts));
     localStorage.setItem('sm_joker_defs', JSON.stringify(JOKER_DEFS));
     localStorage.setItem('sm_custom_events', JSON.stringify(state.customEvents||[]));
+    localStorage.setItem('sm_feature_settings', JSON.stringify(ensureFeatureSettings()));
   } catch {}
 }
 function saveCurrentToLS() {
@@ -5003,6 +5092,7 @@ function saveCurrentToLS() {
   const sessions = getSessions();
   sessions['__autosave__'] = {
     id:'__autosave__', name:'Autosave', date:new Date().toISOString(),
+    settings:{...ensureFeatureSettings()},
     finalized:false, players:state.players, scores:state.scores,
     history:state.history, plan:state.plan, currentIdx:state.currentIdx,
     jokers:state.jokers, jokerUses:state.jokerUses || {}, marathonScope:normalizeMarathonScope(state.marathonScope), timeLimit:state.timeLimit, configuredGameCount:state.configuredGameCount, targetGameCount:state.targetGameCount, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
@@ -5047,6 +5137,9 @@ function loadLS() {
     }
     const ce = localStorage.getItem('sm_custom_events');
     if (ce) state.customEvents = JSON.parse(ce);
+    const featureSettings = localStorage.getItem('sm_feature_settings');
+    if (featureSettings) state.settings = JSON.parse(featureSettings);
+    ensureFeatureSettings();
     normalizeGameCategories();
     syncGlobalGameStatNames();
   } catch {}
@@ -6399,9 +6492,10 @@ function haptic(pattern=[50]) {
 }
 
 function showRandomEvent() {
-  if (!canShowRandomEvent()) {
+  if (!areEventsEnabled() || !canShowRandomEvent()) {
     pendingNextGame = false;
-    _doNextGame();
+    if (hasNextPlayableGame()) _doNextGame();
+    else showEndScreen();
     return;
   }
   const all = getAllEvents();
@@ -6506,7 +6600,7 @@ let pendingNextGame = false;
 function nextGameAfterEvent() {
   if (pendingNextGame) {
     pendingNextGame = false;
-    if (canShowRandomEvent()) _doNextGame();
+    if (hasNextPlayableGame()) _doNextGame();
     else showEndScreen();
   }
 }
@@ -6705,6 +6799,7 @@ function getJokerMeisterRule(jokerId) {
 
 // ── Live goal checking after each game ─────────────────────
 function checkSecretGoalsLive() {
+  if (!areSecretGoalsEnabled()) return;
   if (!state.secretGoals || !state.history.length) return;
   const lastGame = state.history[state.history.length - 1];
 
@@ -6741,11 +6836,13 @@ function soundGoalAchieved() {
 
 let goalAchievedQueue = [];
 function showGoalAchievedModal(playerName, goal) {
+  if (!areSecretGoalsEnabled()) return;
   goalAchievedQueue.push({playerName, goal});
   if (goalAchievedQueue.length === 1) processGoalAchievedQueue();
 }
 
 function processGoalAchievedQueue() {
+  if (!areSecretGoalsEnabled()) { goalAchievedQueue = []; return; }
   if (!goalAchievedQueue.length) return;
   const {playerName, goal} = goalAchievedQueue[0];
   const el = document.getElementById('modal-goal-achieved');
@@ -6765,6 +6862,7 @@ function closeGoalAchievedModal() {
 }
 
 function checkSecretGoalsEnd() {
+  if (!areSecretGoalsEnabled()) return;
   if (!state.secretGoals) return;
 
   // Check end-only goals now
@@ -7153,6 +7251,10 @@ function fbJoinSession(sessionId) {
     state.goalAchieved= data.goalAchieved||state.goalAchieved;
     state.activeJokers= data.activeJokers||state.activeJokers;
     state.postGameWindow = !!data.postGameWindow;
+    state.settings = {
+      eventsEnabled: data.settings?.eventsEnabled !== false,
+      secretGoalsEnabled: data.settings?.secretGoalsEnabled !== false
+    };
     renderAll();
   });
   showToast(`📱 Session ${fbSessionId} verbunden!`);
@@ -7563,8 +7665,8 @@ function smMobileRenderEndScreen(data, playerName) {
   const rank = meIdx + 1;
   const winner = sorted[0] || me;
   const won = rank === 1;
-  const goal = data.secretGoals?.[playerName];
-  const goalDone = !!data.goalAchieved?.[playerName];
+  const goal = areSecretGoalsEnabled(data) ? data.secretGoals?.[playerName] : null;
+  const goalDone = areSecretGoalsEnabled(data) && !!data.goalAchieved?.[playerName];
   const medals = ['🏆','🥈','🥉'];
 
   return `
@@ -7691,7 +7793,7 @@ window.renderJokerPickScreen = function renderJokerPickScreen() {
         }).join('')}
       </div>
       <div style="text-align:center;margin-top:16px;font-size:.82rem;color:${allDone?'var(--green)':'var(--muted)'}">
-        ${allDone ? '✅ Alle Joker sind geheim gewählt. Du kannst jetzt zu den Geheimzielen weitergehen.' : 'Noch nicht alle Spieler sind fertig.'}
+        ${allDone ? (areSecretGoalsEnabled() ? '✅ Alle Joker sind geheim gewählt. Du kannst den Marathon jetzt mit privaten Geheimzielen starten.' : '✅ Alle Joker sind geheim gewählt. Du kannst den Marathon jetzt direkt starten.') : 'Noch nicht alle Spieler sind fertig.'}
       </div>`;
     return;
   }
@@ -7712,10 +7814,12 @@ window.startSecretGoals = function startSecretGoals() {
 window.fbPushState = function fbPushState() {
   if (!fbSyncEnabled || !fbSessionRef || !fbIsHost) return Promise.resolve();
   const cleanGoals = {};
-  Object.entries(state.secretGoals||{}).forEach(([name, goal]) => {
-    if (!goal) return;
-    cleanGoals[name] = { id: goal.id, icon: goal.icon, text: goal.text, reward: goal.reward, endOnly: goal.endOnly };
-  });
+  if (areSecretGoalsEnabled()) {
+    Object.entries(state.secretGoals||{}).forEach(([name, goal]) => {
+      if (!goal) return;
+      cleanGoals[name] = { id: goal.id, icon: goal.icon, text: goal.text, reward: goal.reward, endOnly: goal.endOnly };
+    });
+  }
   const cleanGames = (state.games||[]).map(g=>({
     id:g.id, name:g.name, type:g.type, dur:g.dur, minP:g.minP, maxP:g.maxP, categoryId:g.categoryId || ''
   }));
@@ -7737,8 +7841,8 @@ window.fbPushState = function fbPushState() {
     jokerUses: state.jokerUses || {},
     jokerPicks: state.jokerPicks,
     jokerDefs: smGetJokerDefsForSync(),
-    secretGoals: cleanGoals,
-    goalAchieved: state.goalAchieved,
+    secretGoals: areSecretGoalsEnabled() ? cleanGoals : null,
+    goalAchieved: areSecretGoalsEnabled() ? state.goalAchieved : null,
     activeJokers: state.activeJokers,
     pendingTipster,
     games: cleanGames,
@@ -7755,6 +7859,7 @@ window.fbPushState = function fbPushState() {
     phase,
     marathonStarted: !!state._marathonStarted,
     marathonFinished: !!state._marathonFinished,
+    settings: {...ensureFeatureSettings()},
     postGameWindow: !!state.postGameWindow,
     ts: Date.now(),
     hostAlive: true,
@@ -8184,8 +8289,8 @@ window.renderMobilePlayerView = function renderMobilePlayerView(sessionId, playe
     }
 
     const myJokers  = data.jokers?.[playerName] || [];
-    const myGoal    = data.secretGoals?.[playerName];
-    const achieved  = data.goalAchieved?.[playerName];
+    const myGoal    = areSecretGoalsEnabled(data) ? data.secretGoals?.[playerName] : null;
+    const achieved  = areSecretGoalsEnabled(data) ? data.goalAchieved?.[playerName] : false;
     const scores    = data.scores || {};
     const sorted    = players.length ? players.map(p=>([p.name, scores[p.name]||0])).sort((a,b)=>b[1]-a[1]) : Object.entries(scores).sort((a,b)=>b[1]-a[1]);
     const currentIdx = typeof data.currentIdx === 'number' ? data.currentIdx : -1;
@@ -8633,7 +8738,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
             return `<span class="chip ${p.color} active" style="cursor:default">${esc(p.name)}${goalDone ? ' ✅' : ''}</span>`;
           }).join('')}
         </div>
-        <div style="font-size:.78rem;color:var(--muted);white-space:nowrap">🔒 Joker &amp; Geheimziele privat auf den Handys</div>
+        <div style="font-size:.78rem;color:var(--muted);white-space:nowrap">${areSecretGoalsEnabled() ? '🔒 Joker &amp; Geheimziele privat auf den Handys' : '🔒 Joker privat auf den Handys'}</div>
       </div>`;
   };
 
@@ -8932,9 +9037,13 @@ document.addEventListener('sm-mobile-local-refresh', e => {
 
     smV39CloseSecretGoalHostModals();
     smV39BuildJokersFromPrivatePicks();
-    if (!state._secretGoalsAssigned || Object.keys(state.secretGoals || {}).length < state.players.length) {
+    if (areSecretGoalsEnabled() && (!state._secretGoalsAssigned || Object.keys(state.secretGoals || {}).length < state.players.length)) {
       smV39AssignSecretGoalsSilently();
       state._secretGoalsAssigned = true;
+    } else if (!areSecretGoalsEnabled()) {
+      state.secretGoals = {};
+      state.secretGoalExtras = {};
+      state._secretGoalsAssigned = false;
     }
 
     // Wichtig: _finishSetupAndStart() hat einen Guard auf _marathonStarted.
@@ -8957,7 +9066,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
 
     if (typeof fbPushState === 'function' && fbIsHost) {
       fbPushState();
-      showToast('🎯 Geheimziele wurden privat an die Handys gesendet. Marathon startet!');
+      showToast(areSecretGoalsEnabled() ? '🎯 Geheimziele wurden privat an die Handys gesendet. Marathon startet!' : '🚀 Marathon startet ohne Geheimziele!');
     } else {
       showToast('🚀 Marathon startet!');
     }
