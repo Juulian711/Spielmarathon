@@ -8918,7 +8918,12 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     }
     const winnerEntry = pickRandom(activeEntries);
     const durationMs = 5000 + Math.floor(Math.random() * 7000);
-    const tickCount = Math.max(20, Math.min(44, Math.round(durationMs / 220)));
+    const targetTickCount = Math.max(20, Math.min(44, Math.round(durationMs / 220)));
+    const winnerIndex = activeEntries.findIndex(entry => entry.voteKey === winnerEntry.voteKey);
+    const firstPassTicks = winnerIndex + 1;
+    const fullPasses = Math.max(0, Math.round((targetTickCount - firstPassTicks) / activeEntries.length));
+    let tickCount = firstPassTicks + fullPasses * activeEntries.length;
+    while (tickCount < 20) tickCount += activeEntries.length;
     const intervalCount = Math.max(1, tickCount - 1);
     const weights = Array.from({ length: intervalCount }, (_, i) => {
       const t = i / Math.max(intervalCount - 1, 1);
@@ -8926,26 +8931,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     });
     const weightSum = weights.reduce((sum, value) => sum + value, 0);
     const delays = weights.map(value => Math.max(45, Math.round(durationMs * value / weightSum)));
-    const sequence = [];
-    let visualIndex = Math.floor(Math.random() * activeEntries.length);
-    for (let i = 0; i < tickCount - 1; i++) {
-      if (activeEntries.length === 1) {
-        sequence.push(activeEntries[0]);
-        continue;
-      }
-      const roll = Math.random();
-      let jump = roll < .16 ? -(1 + Math.floor(Math.random() * Math.min(2, activeEntries.length - 1)))
-        : roll < .34 ? 2 + Math.floor(Math.random() * Math.min(3, activeEntries.length - 1))
-        : 1 + Math.floor(Math.random() * Math.min(2, activeEntries.length - 1));
-      visualIndex = (visualIndex + jump + activeEntries.length) % activeEntries.length;
-      const previous = sequence[sequence.length - 1];
-      if (previous?.voteKey === activeEntries[visualIndex].voteKey) visualIndex = (visualIndex + 1) % activeEntries.length;
-      sequence.push(activeEntries[visualIndex]);
-    }
-    if (sequence.length && activeEntries.length > 1 && sequence[sequence.length - 1].voteKey === winnerEntry.voteKey) {
-      sequence[sequence.length - 1] = activeEntries.find(entry => entry.voteKey !== winnerEntry.voteKey);
-    }
-    sequence.push(winnerEntry);
+    const sequence = Array.from({length:tickCount}, (_, index) => activeEntries[index % activeEntries.length]);
     const cards = [...document.querySelectorAll('#game-vote-roulette-stage .mk-vote-card')];
     const result = document.getElementById('result-input-area');
     if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Auswahl läuft...</p></div>';
