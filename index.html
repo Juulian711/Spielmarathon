@@ -239,23 +239,40 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 @keyframes allGamesBannedPop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
 @keyframes allGamesBannedPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 @keyframes allGamesBannedCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}
-.modal-overlay.game-vote-roulette-overlay{z-index:6000;background:radial-gradient(circle at 50% 35%,rgba(25,35,70,.72),rgba(0,0,0,.96) 70%);padding:clamp(12px,2vh,24px) clamp(12px,2vw,32px);cursor:default}
-.modal.game-vote-roulette-modal{width:min(96vw,1700px);max-width:min(96vw,1700px);height:92vh;max-height:92vh;padding:clamp(18px,2vw,32px);overflow:hidden;background:linear-gradient(155deg,#111428,#090b15);border:2px solid rgba(255,215,0,.72);border-radius:24px;box-shadow:0 0 55px rgba(255,215,0,.22),0 35px 120px rgba(0,0,0,.9)}
-.game-vote-roulette-stage{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
-.game-vote-roulette-heading{text-align:center;color:var(--gold);font-size:clamp(.75rem,1.2vw,1rem);font-weight:900;text-transform:uppercase;letter-spacing:.14em;margin-bottom:8px}
-.game-vote-roulette-title{text-align:center;font-size:clamp(1.6rem,3.2vw,3.3rem);font-weight:1000;line-height:1.08;margin-bottom:clamp(16px,2vh,26px)}
-.game-vote-reveal-list{width:min(1100px,100%);flex:1;min-height:0;margin:auto;display:grid;align-content:center;gap:clamp(12px,1.8vh,20px);overflow-y:auto;overscroll-behavior:contain}
-.game-vote-reveal-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:clamp(14px,2vw,24px);padding:clamp(16px,2vw,26px);border:3px solid var(--reveal-color);border-radius:18px;background:linear-gradient(100deg,var(--reveal-glow),rgba(255,255,255,.035));box-shadow:0 0 0 3px var(--reveal-glow),0 16px 40px rgba(0,0,0,.3);animation:gameVoteRevealIn .45s ease-out both}
+.modal-overlay.game-vote-roulette-overlay{z-index:6000;background:radial-gradient(ellipse at 50% 30%,rgba(39,53,108,.72),rgba(5,7,17,.97) 68%);padding:clamp(10px,2vh,24px) clamp(10px,2vw,32px);cursor:default;backdrop-filter:blur(9px)}
+.modal.game-vote-roulette-modal{position:relative;width:min(96vw,1700px);max-width:min(96vw,1700px);height:min(90vh,960px);max-height:calc(100vh - 24px);padding:clamp(24px,2.5vw,44px);overflow:hidden;background:radial-gradient(circle at 50% -20%,rgba(76,94,180,.24),transparent 46%),linear-gradient(145deg,#151a34 0%,#090c18 62%,#070913 100%);border:1px solid rgba(255,225,122,.82);border-radius:28px;box-shadow:0 0 0 1px rgba(255,255,255,.06) inset,0 0 80px rgba(255,215,0,.24),0 42px 140px rgba(0,0,0,.92)}
+.modal.game-vote-roulette-modal::before{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 8%,rgba(255,255,255,.035) 26%,transparent 43%);opacity:.8}
+.game-vote-roulette-stage{position:relative;z-index:1;height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.game-vote-roulette-heading{text-align:center;color:#ffe477;font-size:clamp(.72rem,.85vw,.95rem);font-weight:950;text-transform:uppercase;letter-spacing:.3em;margin-bottom:clamp(8px,1.2vh,13px);text-shadow:0 0 18px rgba(255,215,0,.55)}
+.game-vote-roulette-heading::after{content:'';display:block;width:min(190px,28vw);height:1px;margin:clamp(9px,1.1vh,13px) auto 0;background:linear-gradient(90deg,transparent,rgba(255,215,0,.9),transparent);box-shadow:0 0 12px rgba(255,215,0,.55)}
+.game-vote-roulette-title{text-align:center;font-size:clamp(2rem,3.25vw,3.65rem);font-weight:1000;letter-spacing:-.035em;line-height:1.02;margin-bottom:clamp(20px,2.8vh,36px);text-shadow:0 4px 25px rgba(0,0,0,.5)}
+.game-vote-reveal-list{width:min(1240px,94%);flex:1;min-height:0;margin:auto;display:grid;align-content:center;gap:clamp(16px,2vh,26px);overflow:auto;overscroll-behavior:contain;padding:10px 16px}
+.game-vote-reveal-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:clamp(20px,2.4vw,34px);padding:clamp(20px,2.2vw,32px);border:2px solid var(--reveal-color);border-radius:22px;background:linear-gradient(105deg,var(--reveal-glow),rgba(255,255,255,.045));box-shadow:0 0 0 3px var(--reveal-glow),0 0 32px var(--reveal-glow),0 18px 50px rgba(0,0,0,.36);animation:gameVoteRevealIn .55s cubic-bezier(.2,.85,.25,1) both}
 .game-vote-reveal-emoji{font-size:clamp(2.4rem,5vw,5rem);line-height:1;filter:drop-shadow(0 0 12px var(--reveal-color))}
 .game-vote-reveal-player{color:var(--reveal-color);font-size:clamp(1.25rem,2.6vw,2.4rem);font-weight:1000;line-height:1.05}
 .game-vote-reveal-text{font-size:clamp(1rem,1.7vw,1.55rem);font-weight:850;line-height:1.35;margin-top:7px}
-.game-vote-roulette-cards{flex:1;min-height:0;align-content:center;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:clamp(12px,1.5vw,22px);padding:8px;overflow-y:auto;overscroll-behavior:contain}
-.game-vote-roulette-cards .mk-vote-card{min-height:112px;grid-template-columns:92px 1fr;padding:16px}
-.game-vote-roulette-cards .mk-vote-cover{width:92px;height:92px}
-.game-vote-roulette-stage .mk-winner-moment{width:min(680px,92%);max-width:680px;margin:auto;padding:clamp(18px,2vw,30px);animation:mkWinnerPop .42s ease-out both}
-.game-vote-roulette-stage .mk-winner-cover{height:min(52vh,470px)}
+.game-vote-roulette-cards{flex:1;min-height:0;align-content:center;justify-content:center;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:clamp(20px,2vw,34px);padding:clamp(12px,1.6vw,26px);overflow:auto;overscroll-behavior:contain}
+.game-vote-roulette-cards .mk-vote-card{min-height:132px;grid-template-columns:104px minmax(0,1fr);gap:18px;padding:18px;border-radius:19px;background:linear-gradient(135deg,rgba(35,41,70,.96),rgba(16,20,36,.96));box-shadow:0 0 0 2px color-mix(in srgb,var(--player-border) 32%,transparent),0 14px 32px rgba(0,0,0,.34);transition:transform .24s cubic-bezier(.2,.8,.2,1),border-color .2s ease,box-shadow .2s ease,opacity .45s ease,filter .45s ease;animation:gameVoteCardIn .55s cubic-bezier(.2,.85,.25,1) both}
+.game-vote-roulette-cards .mk-vote-card:nth-child(3n+2){animation-delay:.06s}.game-vote-roulette-cards .mk-vote-card:nth-child(3n){animation-delay:.12s}
+.game-vote-roulette-cards .mk-vote-card:not(.active):not(.winner):not(.dimmed):hover{transform:translateY(-3px);box-shadow:0 0 0 2px color-mix(in srgb,var(--player-border) 45%,transparent),0 18px 38px rgba(0,0,0,.4)}
+.game-vote-roulette-cards .mk-vote-cover{width:104px;height:96px;border-radius:14px;box-shadow:0 9px 24px rgba(0,0,0,.4)}
+.game-vote-roulette-cards .mk-vote-card.active{z-index:3;border-color:#fff;transform:translateY(-7px) scale(1.055);box-shadow:0 0 0 3px var(--player-border),0 0 26px 7px var(--player-border),0 24px 50px rgba(0,0,0,.58);animation:gameVoteActivePulse .72s ease-in-out infinite alternate}
+.game-vote-roulette-cards .mk-vote-card.winner{z-index:8;opacity:1;filter:none;transform:translateY(-10px) scale(1.12);box-shadow:0 0 0 4px #fff,0 0 0 8px var(--player-border),0 0 62px 20px var(--player-border),0 34px 80px rgba(0,0,0,.8);animation:gameVoteWinnerPop .55s cubic-bezier(.16,1.25,.3,1) both}
+.game-vote-roulette-stage.roulette-resolving .mk-vote-card:not(.winner){opacity:.08;filter:grayscale(.8) blur(3px) brightness(.45);transform:scale(.88)}
+.game-vote-roulette-stage.roulette-resolving .game-vote-roulette-heading,.game-vote-roulette-stage.roulette-resolving .game-vote-roulette-title{opacity:.38;transition:opacity .4s ease}
+.game-vote-roulette-stage .mk-winner-moment{position:relative;width:min(900px,94%);max-width:900px;margin:auto;padding:clamp(22px,2.5vw,38px);border-radius:26px;background:radial-gradient(circle at 50% 15%,color-mix(in srgb,var(--winner-color) 24%,transparent),transparent 48%),linear-gradient(150deg,rgba(31,37,67,.98),rgba(9,12,24,.98));box-shadow:0 0 0 3px color-mix(in srgb,var(--winner-color) 55%,transparent),0 0 78px 18px color-mix(in srgb,var(--winner-color) 48%,transparent),0 36px 100px rgba(0,0,0,.75);animation:mkShowcaseWinnerIn .78s cubic-bezier(.16,1,.3,1) both}
+.game-vote-roulette-stage .mk-winner-cover{height:min(38vh,410px);border-radius:19px;margin-bottom:clamp(18px,2vh,26px);box-shadow:0 0 0 3px var(--winner-color),0 0 42px color-mix(in srgb,var(--winner-color) 58%,transparent),0 20px 50px rgba(0,0,0,.5)}
+.game-vote-winner-label{color:#fff;font-size:clamp(.78rem,1vw,1rem);font-weight:950;text-transform:uppercase;letter-spacing:.24em;margin-bottom:12px;text-shadow:0 0 16px var(--winner-color)}
+.game-vote-winner-player{display:inline-flex;align-items:center;padding:7px 14px;border:1px solid var(--winner-color);border-radius:999px;color:var(--winner-color);font-size:.82rem;font-weight:900;margin-bottom:14px;background:color-mix(in srgb,var(--winner-color) 12%,transparent)}
+.game-vote-winner-name{font-size:clamp(2rem,3.6vw,4rem);line-height:1;font-weight:1000;letter-spacing:-.035em;text-shadow:0 0 25px color-mix(in srgb,var(--winner-color) 45%,transparent)}
 @keyframes gameVoteRevealIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
-@media(max-width:700px){.modal.game-vote-roulette-modal{width:98vw;max-width:98vw;height:95vh;max-height:95vh;border-radius:16px}.game-vote-roulette-cards{grid-template-columns:1fr 1fr}.game-vote-roulette-cards .mk-vote-card{grid-template-columns:64px 1fr;min-height:88px;padding:10px}.game-vote-roulette-cards .mk-vote-cover{width:64px;height:64px}}
+@keyframes gameVoteCardIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes gameVoteActivePulse{from{filter:brightness(1);box-shadow:0 0 0 3px var(--player-border),0 0 22px 5px var(--player-border),0 24px 50px rgba(0,0,0,.58)}to{filter:brightness(1.18);box-shadow:0 0 0 4px #fff,0 0 34px 11px var(--player-border),0 28px 58px rgba(0,0,0,.65)}}
+@keyframes gameVoteWinnerPop{0%{transform:translateY(-7px) scale(1.055)}55%{transform:translateY(-13px) scale(1.16)}100%{transform:translateY(-10px) scale(1.12)}}
+@keyframes mkShowcaseWinnerIn{0%{opacity:0;transform:translateY(32px) scale(.72);filter:blur(8px)}62%{opacity:1;transform:translateY(-5px) scale(1.035);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
+@media(max-width:1050px){.modal.game-vote-roulette-modal{width:97vw;padding:clamp(18px,2.5vw,28px)}.game-vote-roulette-cards{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}.game-vote-roulette-cards .mk-vote-card{grid-template-columns:82px minmax(0,1fr);min-height:108px;padding:14px}.game-vote-roulette-cards .mk-vote-cover{width:82px;height:78px}}
+@media(max-width:700px){.modal.game-vote-roulette-modal{width:98vw;max-width:98vw;height:min(92vh,960px);border-radius:18px}.game-vote-roulette-title{font-size:clamp(1.55rem,6vw,2.2rem)}.game-vote-roulette-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:8px}.game-vote-roulette-cards .mk-vote-card{display:flex;flex-direction:column;align-items:stretch;min-height:0;padding:11px;gap:10px}.game-vote-roulette-cards .mk-vote-cover{width:100%;height:72px}.game-vote-roulette-stage .mk-winner-cover{height:min(39vh,330px)}}
+@media(prefers-reduced-motion:reduce){.game-vote-roulette-stage *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:.7rem;font-weight:700;text-transform:uppercase}
 .badge-ffa{background:rgba(233,69,96,.2);color:#e94560}
 .badge-2v2{background:rgba(78,205,196,.2);color:#4ecdc4}
@@ -8719,7 +8736,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
 
   function renderGameVoteRouletteCards(entries) {
     return entries.map(({game:g, playerName, color, voteKey, disabled, jokerBadge, bannedBy}) => `
-      <div class="mk-vote-card ${disabled?'dimmed':''}" data-disabled="${disabled?'1':'0'}" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color};box-shadow:0 0 0 3px ${color}55;${disabled?'filter:grayscale(1);opacity:.42':''}">
+      <div class="mk-vote-card ${disabled?'dimmed':''}" data-disabled="${disabled?'1':'0'}" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color}">
         ${disabled ? '<div class="mk-vote-count" style="font-size:.72rem">🚫 Gebannt</div>' : (jokerBadge ? `<div class="mk-vote-count" style="font-size:.72rem">${esc(jokerBadge)}</div>` : '')}
         ${disabled && bannedBy ? `<div class="mk-vote-count" style="font-size:.68rem;right:8px;top:40px;background:#e94560">von ${esc(bannedBy)}</div>` : ''}
         <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
@@ -8875,18 +8892,23 @@ document.addEventListener('sm-mobile-local-refresh', e => {
       card.classList.toggle('active', winner && !isDisabled);
     });
     const stage = document.getElementById('game-vote-roulette-stage');
-    if (stage && g) {
-      stage.innerHTML = `<div class="game-vote-roulette-heading">Gewählt</div>
-        <div class="mk-winner-moment" style="border-color:${winnerColor};box-shadow:0 20px 70px rgba(0,0,0,.35),0 0 0 3px ${winnerColor}55">
-          <div style="font-size:.72rem;color:${winnerColor};font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">${esc(winnerEntry?.playerName || 'Ausgewählt')}</div>
-          <div class="mk-winner-cover" style="box-shadow:0 0 0 3px ${winnerColor}55">${renderCoverFallbackHtml(g)}</div>
-          <div style="font-size:1.45rem;font-weight:900">${esc(g.name)}</div>
-          <div style="font-size:.82rem;color:var(--muted);margin-top:5px">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
-        </div>`;
-    }
+    if (stage && g) stage.classList.add('roulette-resolving');
     playTone(784, .18, 'triangle', .16, 0);
     playTone(1047, .28, 'triangle', .14, .16);
-    setTimeout(() => window.finishMarioKartSelection(gameId, winnerEntry), 1800);
+    setTimeout(() => {
+      if (!stage || !g) return;
+      stage.classList.remove('roulette-resolving');
+      stage.innerHTML = `<div class="game-vote-roulette-heading">Spielwahl-Roulette</div>
+        <div class="game-vote-roulette-title" id="game-vote-roulette-title">Das nächste Spiel ist</div>
+        <div class="mk-winner-moment" style="--winner-color:${winnerColor};border-color:${winnerColor}">
+          <div class="game-vote-winner-label">Gewählt!</div>
+          <div class="game-vote-winner-player">${esc(winnerEntry?.playerName || 'Ausgewählt')}</div>
+          <div class="mk-winner-cover">${renderCoverFallbackHtml(g)}</div>
+          <div class="game-vote-winner-name">${esc(g.name)}</div>
+          <div style="font-size:clamp(.82rem,1vw,1rem);color:var(--muted);margin-top:10px">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
+        </div>`;
+    }, 620);
+    setTimeout(() => window.finishMarioKartSelection(gameId, winnerEntry), 2700);
   }
   window.showMarioKartWinnerMoment = showMarioKartWinnerMoment;
 
