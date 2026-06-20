@@ -1409,11 +1409,13 @@ let pendingJokerId = null;
 let coverDataUrl = '';
 let coverOriginalDataUrl = '';
 let resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
+let tournamentHomeLock = false;
 
 // ═══════════════════════════════════════════════════════════
 //  SCREEN MANAGEMENT
 // ═══════════════════════════════════════════════════════════
 function showScreen(id) {
+  if (tournamentHomeLock && (id === 'screen-marathon' || id === 'screen-joker-pick')) return;
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id)?.classList.add('active');
   const inMarathon = id === 'screen-marathon';
@@ -1423,7 +1425,7 @@ function showScreen(id) {
 }
 
 function resetMarathonRuntime(options = {}) {
-  const { disconnectFirebase = true, clearAutosave = false } = options;
+  const { disconnectFirebase = true, clearAutosave = false, render = true } = options;
 
   // Online-/Handy-Session sauber beenden, damit ein neuer Marathon frische QR-Codes bekommt.
   if (disconnectFirebase && typeof fbDisconnect === 'function' && typeof fbSessionId !== 'undefined' && fbSessionId) {
@@ -1464,6 +1466,7 @@ function resetMarathonRuntime(options = {}) {
   state._setupPhase = null;
   state._forceLocalJokerPick = false;
   state._vetoFromEndScreen = false;
+  state._vetoPenaltyApplied = {};
 
   // Ergebnis-/Joker-Modals und ersetzte Endscreen-HTML zurücksetzen.
   pendingJokerPlayer = null;
@@ -1481,7 +1484,7 @@ function resetMarathonRuntime(options = {}) {
     }
   }
   saveLS();
-  renderAll();
+  if (render) renderAll();
   renderPlayerSetup();
   renderPlanPreview();
   syncMarathonModeInput();
@@ -1545,6 +1548,7 @@ function buildSessionSnapshot(name, finalize=false) {
     secretGoalExtras: state.secretGoalExtras || {},
     comebackGiven: state.comebackGiven || {},
     giftedJokers: state.giftedJokers || {},
+    vetoPenaltyApplied: state._vetoPenaltyApplied || {},
     goalAchieved: state.goalAchieved || {},
     activeJokers: state.activeJokers || {},
     currentVoteOptions: state.currentVoteOptions || [],
@@ -4337,18 +4341,27 @@ function finishTournamentAndReturnHome(snapshot, name) {
     actualGameCount: snapshot.history?.length || 0,
     timeLimit: snapshot.timeLimit || 0});
 
-  closeModal('modal-save');
-  resetMarathonRuntime({ disconnectFirebase: true, clearAutosave: true });
-  document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
-  showScreen('screen-home');
-  renderPlayerSetup();
-  renderPlanPreview();
-  syncMarathonModeInput();
-  renderSavedSessions();
-  renderTournamentList();
-  updateGameCountBadge();
-  if (typeof renderFbStatus === 'function') renderFbStatus();
-  showToast('🏆 Als Turnier gespeichert!');
+  tournamentHomeLock = true;
+  try {
+    closeModal('modal-save');
+    document.querySelectorAll('.modal-overlay.open').forEach(modal => modal.classList.remove('open'));
+    resetMarathonRuntime({ disconnectFirebase: true, clearAutosave: true, render: false });
+  } catch (error) {
+    console.warn('Turnier wurde gespeichert, Abschluss-Reset war unvollständig:', error);
+  } finally {
+    document.querySelectorAll('.modal-overlay.open').forEach(modal => modal.classList.remove('open'));
+    showScreen('screen-home');
+    const headerSub = document.getElementById('header-sub');
+    if (headerSub) headerSub.textContent = 'Bereit für den Marathon!';
+    renderPlayerSetup();
+    renderPlanPreview();
+    syncMarathonModeInput();
+    renderSavedSessions();
+    renderTournamentList();
+    updateGameCountBadge();
+    if (typeof renderFbStatus === 'function') renderFbStatus();
+    showToast('🏆 Als Turnier gespeichert!');
+  }
 }
 
 function saveSession(finalize) {
@@ -4396,6 +4409,7 @@ function loadSession(id) {
   const sessions = getSessions();
   const s = sessions[id];
   if (!s) return;
+  tournamentHomeLock = false;
   state.players    = s.players || [];
   state.scores     = s.scores  || {};
   state.history    = s.history || [];
@@ -4424,6 +4438,7 @@ function loadSession(id) {
   state.comebackGiven = s.comebackGiven || {};
   state.goalAchieved  = s.goalAchieved  || {};
   state.giftedJokers  = s.giftedJokers  || {};
+  state._vetoPenaltyApplied = s.vetoPenaltyApplied || s._vetoPenaltyApplied || {};
   state.activeJokers = s.activeJokers || {};
   state._setupPhase = s.setupPhase || null;
   state._marathonStarted = s.marathonStarted ?? true;
@@ -4867,6 +4882,7 @@ function saveCurrentToLS() {
     currentVoteDisplayOrder:state.currentVoteDisplayOrder || [],
     pendingTipster:state.pendingTipster || null,
     secretGoals:state.secretGoals, secretGoalExtras:state.secretGoalExtras, comebackGiven:state.comebackGiven, goalAchieved:state.goalAchieved, giftedJokers:state.giftedJokers,
+    vetoPenaltyApplied:state._vetoPenaltyApplied || {},
     setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
   };
   setSessions(sessions);
@@ -6182,6 +6198,19 @@ function playMKTikSound(progress=0) {
   } catch {}
 }
 
+function wasVetoChosenAtSetup(playerName) {
+  return (state.jokerPicks?.[playerName] || []).includes('veto');
+}
+
+function applyInitialVetoPenalty(playerName) {
+  state._vetoPenaltyApplied ||= {};
+  if (!wasVetoChosenAtSetup(playerName)) return false;
+  if (state._vetoPenaltyApplied[playerName]) return false;
+  state.scores[playerName] = (state.scores[playerName] || 0) - 3;
+  state._vetoPenaltyApplied[playerName] = true;
+  return true;
+}
+
 function playRouletteTickSound(progress=0, isFinal=false) {
   if (!soundEnabled) return;
   const p = Math.max(0, Math.min(1, progress));
@@ -6370,7 +6399,7 @@ function checkComeback() {
   const available = JOKER_DEFS.filter(jd => !pj.find(j=>j.id===jd.id));
   if (!available.length) return;
   const bonus = pickRandom(available);
-  state.jokers[loser.name].push({id:bonus.id, used:false, gifted:true});
+  state.jokers[loser.name].push({id:bonus.id, used:false, gifted:true, source:'gifted'});
   // Mark this player's goal as having a gifted joker — so Joker-Sparer/light still valid
   if (!state.giftedJokers) state.giftedJokers = {};
   if (!state.giftedJokers[loser.name]) state.giftedJokers[loser.name] = [];
@@ -7372,6 +7401,7 @@ function smMobileRenderEndScreen(data, playerName) {
 
 // Start now prepares a private phone-based joker-pick phase when Firebase works.
 window.startMarathon = function startMarathon() {
+  tournamentHomeLock = false;
   if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
   const compatible = getCompatibleGames();
   if (!compatible.length) { showToast('Keine kompatiblen Spiele für diese Spielerzahl!'); return; }
@@ -7409,6 +7439,7 @@ window.startMarathon = function startMarathon() {
   state._marathonFinished = false;
   state._setupPhase = 'jokerPick';
   state._vetoFromEndScreen = false;
+  state._vetoPenaltyApplied = {};
   state.currentIdx = -1;
   state.jokerPicks = {};
 
@@ -8533,15 +8564,11 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   }
 
   function smBuildJokersFromPrivatePicks() {
-    state._vetoPenaltyApplied = state._vetoPenaltyApplied || {};
     state.players.forEach(p => {
       const picks = state.jokerPicks[p.name] || [];
-      state.jokers[p.name] = [...picks.map(id => ({id, used:false})), ...(shouldGiveFreeSkip() ? [{id:'skip', used:false}] : [])];
+      state.jokers[p.name] = [...picks.map(id => ({id, used:false, source:'setup'})), ...(shouldGiveFreeSkip() ? [{id:'skip', used:false, source:'system'}] : [])];
       state.jokerUses[getGameVotePlayerKey(p)] = getModeJokerUsesForPicks(picks);
-      if (picks.includes('veto') && !state._vetoPenaltyApplied[p.name]) {
-        state.scores[p.name] = (state.scores[p.name] || 0) - 3;
-        state._vetoPenaltyApplied[p.name] = true;
-      }
+      applyInitialVetoPenalty(p.name);
     });
   }
 
@@ -8618,14 +8645,11 @@ document.addEventListener('sm-mobile-local-refresh', e => {
   }
 
   function smV39BuildJokersFromPrivatePicks(){
-    state._vetoPenaltyApplied = state._vetoPenaltyApplied || {};
     state.players.forEach(p => {
       const picks = state.jokerPicks[p.name] || [];
-      state.jokers[p.name] = [...picks.map(id => ({id, used:false})), ...(shouldGiveFreeSkip() ? [{id:'skip', used:false}] : [])];
+      state.jokers[p.name] = [...picks.map(id => ({id, used:false, source:'setup'})), ...(shouldGiveFreeSkip() ? [{id:'skip', used:false, source:'system'}] : [])];
       state.jokerUses[getGameVotePlayerKey(p)] = getModeJokerUsesForPicks(picks);
-      if (picks.includes('veto') && !state._vetoPenaltyApplied[p.name]) {
-        state.scores[p.name] = (state.scores[p.name] || 0) - 3;
-        state._vetoPenaltyApplied[p.name] = true;
+      if (applyInitialVetoPenalty(p.name)) {
         showToast(`🗳️ ${p.name} hat das Veto – startet mit -3 Punkten!`);
       }
     });
