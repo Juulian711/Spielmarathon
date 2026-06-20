@@ -251,6 +251,16 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .game-vote-reveal-emoji{font-size:clamp(2.4rem,5vw,5rem);line-height:1;filter:drop-shadow(0 0 12px var(--reveal-color))}
 .game-vote-reveal-player{color:var(--reveal-color);font-size:clamp(1.25rem,2.6vw,2.4rem);font-weight:1000;line-height:1.05}
 .game-vote-reveal-text{font-size:clamp(1rem,1.7vw,1.55rem);font-weight:850;line-height:1.35;margin-top:7px}
+.roulette-joker-reveal{flex:1;min-height:0;display:grid;place-items:center;text-align:center;padding:clamp(18px,3vw,46px)}
+.roulette-joker-reveal-card{width:min(980px,92%);padding:clamp(28px,4vw,64px);border:2px solid var(--reveal-color);border-radius:30px;background:radial-gradient(circle at 50% 10%,var(--reveal-glow),transparent 52%),linear-gradient(145deg,rgba(28,34,62,.98),rgba(8,11,23,.98));box-shadow:0 0 0 4px var(--reveal-glow),0 0 75px 12px var(--reveal-glow),0 35px 90px rgba(0,0,0,.7);animation:rouletteRevealPop .55s cubic-bezier(.16,1.15,.3,1) both}
+.roulette-reveal-ban .roulette-joker-reveal-card{--reveal-color:#ff526d;--reveal-glow:rgba(233,69,96,.34);background:radial-gradient(circle at 50% 10%,rgba(233,69,96,.3),transparent 52%),linear-gradient(145deg,#310e19,#0e0a12)}
+.roulette-reveal-magnet .roulette-joker-reveal-card{--reveal-color:#4ecdc4;--reveal-glow:rgba(78,205,196,.34)}
+.roulette-joker-reveal-emoji{font-size:clamp(5rem,11vw,9rem);line-height:1;filter:drop-shadow(0 0 24px var(--reveal-color));margin-bottom:18px}
+.roulette-reveal-magnet .roulette-joker-reveal-emoji{animation:rouletteMagnetPull .75s ease-in-out both}
+.roulette-joker-reveal-title{font-size:clamp(2.6rem,6vw,6rem);font-weight:1000;line-height:.95;letter-spacing:.04em;color:#fff;text-shadow:0 0 28px var(--reveal-color);margin-bottom:clamp(20px,3vh,34px)}
+.roulette-joker-reveal-detail{font-size:clamp(1.2rem,2.3vw,2.25rem);font-weight:850;line-height:1.3}
+.roulette-joker-reveal-player{color:var(--player-color);text-shadow:0 0 18px color-mix(in srgb,var(--player-color) 65%,transparent)}
+.roulette-joker-reveal-note{display:inline-block;margin-top:18px;padding:8px 17px;border:1px solid var(--reveal-color);border-radius:999px;color:var(--reveal-color);font-size:clamp(.85rem,1.25vw,1.1rem);font-weight:900;text-transform:uppercase;letter-spacing:.08em}
 .game-vote-roulette-cards{flex:1;min-height:0;align-content:center;justify-content:center;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:clamp(20px,2vw,34px);padding:clamp(12px,1.6vw,26px);overflow:auto;overscroll-behavior:contain}
 .game-vote-roulette-cards .mk-vote-card{min-height:132px;grid-template-columns:104px minmax(0,1fr);gap:18px;padding:18px;border-radius:19px;background:linear-gradient(135deg,rgba(35,41,70,.96),rgba(16,20,36,.96));box-shadow:0 0 0 2px color-mix(in srgb,var(--player-border) 32%,transparent),0 14px 32px rgba(0,0,0,.34);transition:transform .24s cubic-bezier(.2,.8,.2,1),border-color .2s ease,box-shadow .2s ease,opacity .45s ease,filter .45s ease;animation:gameVoteCardIn .55s cubic-bezier(.2,.85,.25,1) both}
 .game-vote-roulette-cards .mk-vote-card:nth-child(3n+2){animation-delay:.06s}.game-vote-roulette-cards .mk-vote-card:nth-child(3n){animation-delay:.12s}
@@ -258,6 +268,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .game-vote-roulette-cards .mk-vote-cover{width:104px;height:96px;border-radius:14px;box-shadow:0 9px 24px rgba(0,0,0,.4)}
 .game-vote-roulette-cards .mk-vote-card.active{z-index:3;border-color:#fff;transform:translateY(-7px) scale(1.055);box-shadow:0 0 0 3px var(--player-border),0 0 26px 7px var(--player-border),0 24px 50px rgba(0,0,0,.58);animation:gameVoteActivePulse .72s ease-in-out infinite alternate}
 .game-vote-roulette-cards .mk-vote-card.winner{z-index:8;opacity:1;filter:none;transform:translateY(-10px) scale(1.12);box-shadow:0 0 0 4px #fff,0 0 0 8px var(--player-border),0 0 62px 20px var(--player-border),0 34px 80px rgba(0,0,0,.8);animation:gameVoteWinnerPop .55s cubic-bezier(.16,1.25,.3,1) both}
+.game-vote-roulette-cards .roulette-card-active{z-index:3;border-color:#fff;transform:translateY(-7px) scale(1.055);box-shadow:0 0 0 3px var(--player-border),0 0 26px 7px var(--player-border),0 24px 50px rgba(0,0,0,.58);animation:gameVoteActivePulse .72s ease-in-out infinite alternate}
+.game-vote-roulette-cards .roulette-card-final-step{animation:rouletteFinalTick .5s cubic-bezier(.18,1.25,.32,1) both}
+.game-vote-roulette-cards .roulette-card-winner{z-index:8!important;opacity:1!important;filter:none!important;transform:translateY(-10px) scale(1.12)!important;box-shadow:0 0 0 4px #fff,0 0 0 8px var(--player-border),0 0 68px 22px var(--player-border),0 34px 80px rgba(0,0,0,.8)!important;animation:gameVoteWinnerPop .55s cubic-bezier(.16,1.25,.3,1) both!important}
+.game-vote-roulette-cards .roulette-card-banned{opacity:.2;filter:grayscale(1) brightness(.48);transform:scale(.94);border-color:#6b6871!important;box-shadow:0 0 0 2px rgba(233,69,96,.16),0 12px 30px rgba(0,0,0,.35)!important;animation:rouletteBannedSettle .72s ease-out both}
+.game-vote-roulette-cards .roulette-card-magnet{animation-name:rouletteMagnetCardIn;animation-duration:.72s}
+.game-vote-roulette-cards .roulette-card-dimmed{opacity:.08;filter:grayscale(.8) blur(3px) brightness(.45);transform:scale(.88)}
 .game-vote-roulette-stage.roulette-resolving .mk-vote-card:not(.winner){opacity:.08;filter:grayscale(.8) blur(3px) brightness(.45);transform:scale(.88)}
 .game-vote-roulette-stage.roulette-resolving .game-vote-roulette-heading,.game-vote-roulette-stage.roulette-resolving .game-vote-roulette-title{opacity:.38;transition:opacity .4s ease}
 .game-vote-roulette-stage .mk-winner-moment{position:relative;width:min(900px,94%);max-width:900px;margin:auto;padding:clamp(22px,2.5vw,38px);border-radius:26px;background:radial-gradient(circle at 50% 15%,color-mix(in srgb,var(--winner-color) 24%,transparent),transparent 48%),linear-gradient(150deg,rgba(31,37,67,.98),rgba(9,12,24,.98));box-shadow:0 0 0 3px color-mix(in srgb,var(--winner-color) 55%,transparent),0 0 78px 18px color-mix(in srgb,var(--winner-color) 48%,transparent),0 36px 100px rgba(0,0,0,.75);animation:mkShowcaseWinnerIn .78s cubic-bezier(.16,1,.3,1) both}
@@ -265,11 +281,18 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .game-vote-winner-label{color:#fff;font-size:clamp(.78rem,1vw,1rem);font-weight:950;text-transform:uppercase;letter-spacing:.24em;margin-bottom:12px;text-shadow:0 0 16px var(--winner-color)}
 .game-vote-winner-player{display:inline-flex;align-items:center;padding:7px 14px;border:1px solid var(--winner-color);border-radius:999px;color:var(--winner-color);font-size:.82rem;font-weight:900;margin-bottom:14px;background:color-mix(in srgb,var(--winner-color) 12%,transparent)}
 .game-vote-winner-name{font-size:clamp(2rem,3.6vw,4rem);line-height:1;font-weight:1000;letter-spacing:-.035em;text-shadow:0 0 25px color-mix(in srgb,var(--winner-color) 45%,transparent)}
+.roulette-final-title{font-size:clamp(2.2rem,4.8vw,5rem);font-weight:1000;line-height:.95;letter-spacing:.04em;color:#fff;text-shadow:0 0 32px var(--winner-color);margin-bottom:13px}
+.roulette-winner-magnet{display:inline-flex;align-items:center;gap:7px;margin:0 0 13px;padding:6px 12px;border-radius:999px;background:rgba(78,205,196,.15);border:1px solid #4ecdc4;color:#7ff6ee;font-size:.82rem;font-weight:950;text-transform:uppercase;letter-spacing:.08em}
 @keyframes gameVoteRevealIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes gameVoteCardIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes gameVoteActivePulse{from{filter:brightness(1);box-shadow:0 0 0 3px var(--player-border),0 0 22px 5px var(--player-border),0 24px 50px rgba(0,0,0,.58)}to{filter:brightness(1.18);box-shadow:0 0 0 4px #fff,0 0 34px 11px var(--player-border),0 28px 58px rgba(0,0,0,.65)}}
 @keyframes gameVoteWinnerPop{0%{transform:translateY(-7px) scale(1.055)}55%{transform:translateY(-13px) scale(1.16)}100%{transform:translateY(-10px) scale(1.12)}}
 @keyframes mkShowcaseWinnerIn{0%{opacity:0;transform:translateY(32px) scale(.72);filter:blur(8px)}62%{opacity:1;transform:translateY(-5px) scale(1.035);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
+@keyframes rouletteRevealPop{0%{opacity:0;transform:scale(.72) translateY(28px);filter:blur(7px)}70%{opacity:1;transform:scale(1.035) translateY(-4px);filter:blur(0)}100%{opacity:1;transform:scale(1) translateY(0);filter:blur(0)}}
+@keyframes rouletteMagnetPull{0%{opacity:0;transform:translateX(-90px) rotate(-24deg) scale(.65)}65%{opacity:1;transform:translateX(10px) rotate(5deg) scale(1.12)}100%{transform:none}}
+@keyframes rouletteMagnetCardIn{0%{opacity:0;transform:translateX(70px) scale(.72);filter:blur(5px)}70%{opacity:1;transform:translateX(-5px) scale(1.035);filter:blur(0)}100%{opacity:1;transform:none;filter:none}}
+@keyframes rouletteBannedSettle{0%{opacity:.85;filter:none;transform:scale(1.06);box-shadow:0 0 42px rgba(233,69,96,.8)}100%{opacity:.2;filter:grayscale(1) brightness(.48);transform:scale(.94)}}
+@keyframes rouletteFinalTick{0%{transform:translateY(-7px) scale(1.055)}55%{transform:translateY(-11px) scale(1.105)}100%{transform:translateY(-7px) scale(1.065)}}
 @media(max-width:1050px){.modal.game-vote-roulette-modal{width:97vw;padding:clamp(18px,2.5vw,28px)}.game-vote-roulette-cards{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}.game-vote-roulette-cards .mk-vote-card{grid-template-columns:82px minmax(0,1fr);min-height:108px;padding:14px}.game-vote-roulette-cards .mk-vote-cover{width:82px;height:78px}}
 @media(max-width:700px){.modal.game-vote-roulette-modal{width:98vw;max-width:98vw;height:min(92vh,960px);border-radius:18px}.game-vote-roulette-title{font-size:clamp(1.55rem,6vw,2.2rem)}.game-vote-roulette-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:8px}.game-vote-roulette-cards .mk-vote-card{display:flex;flex-direction:column;align-items:stretch;min-height:0;padding:11px;gap:10px}.game-vote-roulette-cards .mk-vote-cover{width:100%;height:72px}.game-vote-roulette-stage .mk-winner-cover{height:min(39vh,330px)}}
 @media(prefers-reduced-motion:reduce){.game-vote-roulette-stage *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
@@ -6159,6 +6182,48 @@ function playMKTikSound(progress=0) {
   } catch {}
 }
 
+function playRouletteTickSound(progress=0, isFinal=false) {
+  if (!soundEnabled) return;
+  const p = Math.max(0, Math.min(1, progress));
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const base = Math.round(920 - p * 300);
+    playTone(base, isFinal ? .11 : .035 + p * .035, isFinal ? 'triangle' : 'square', isFinal ? .105 : .045 + p * .018);
+    if (isFinal) playTone(base / 2, .13, 'sine', .065, .015);
+  } catch {}
+}
+
+function playBanRevealSound() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    playTone(92, .22, 'sine', .15);
+    playTone(180, .16, 'sawtooth', .065, .03);
+    playTone(130, .2, 'triangle', .07, .19);
+  } catch {}
+}
+
+function playMagnetRevealSound() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    [[330,0],[440,.08],[660,.16],[990,.25]].forEach(([freq, delay], index) => playTone(freq, index === 3 ? .2 : .1, index < 2 ? 'sawtooth' : 'triangle', index === 3 ? .1 : .055, delay));
+  } catch {}
+}
+
+function playRouletteWinnerSound() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    playTone(196, .22, 'sine', .11);
+    [[523,0],[659,.1],[784,.2],[1047,.32]].forEach(([freq, delay], index) => playTone(freq, index === 3 ? .42 : .2, 'triangle', index === 3 ? .15 : .1, delay));
+  } catch {}
+}
+
 function primeRouletteAudio() {
   if (!soundEnabled) return;
   try {
@@ -8736,7 +8801,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
 
   function renderGameVoteRouletteCards(entries) {
     return entries.map(({game:g, playerName, color, voteKey, disabled, jokerBadge, bannedBy}) => `
-      <div class="mk-vote-card ${disabled?'dimmed':''}" data-disabled="${disabled?'1':'0'}" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" style="--player-border:${color};border-color:${color}">
+      <div class="mk-vote-card ${disabled?'dimmed roulette-card-banned':''} ${jokerBadge?.includes('Magnet')?'roulette-card-magnet':''}" data-disabled="${disabled?'1':'0'}" data-vote-key="${esc(voteKey)}" data-game-id="${esc(g.id)}" data-magnet="${jokerBadge?.includes('Magnet')?'1':'0'}" style="--player-border:${color};border-color:${color}">
         ${disabled ? '<div class="mk-vote-count" style="font-size:.72rem">🚫 Gebannt</div>' : (jokerBadge ? `<div class="mk-vote-count" style="font-size:.72rem">${esc(jokerBadge)}</div>` : '')}
         ${disabled && bannedBy ? `<div class="mk-vote-count" style="font-size:.68rem;right:8px;top:40px;background:#e94560">von ${esc(bannedBy)}</div>` : ''}
         <div class="mk-vote-cover">${renderCoverFallbackHtml(g)}</div>
@@ -8791,11 +8856,11 @@ document.addEventListener('sm-mobile-local-refresh', e => {
         if ((r.bannedGameIds || []).length) {
           const names = r.bannedGameIds.map(id => state.currentVoteOptions.find(g => g.id === id)?.name).filter(Boolean);
           const gamesText = names.length < 2 ? (names[0] || 'ein Spiel') : `${names.slice(0, -1).join(', ')} und ${names[names.length - 1]}`;
-          items.push({emoji:'🚫', name:'Bann-Joker', playerName:r.playerName, color, detail:`${r.playerName} hat ${gamesText} gebannt!`});
+          items.push({type:'ban', emoji:'🚫', title:'GEBANNT!', playerName:r.playerName, color, gamesText, detail:`hat ${gamesText} gebannt!`});
         }
         if (r.useMagnet || r.modeJoker === 'magnet') {
           const gameName = state.currentVoteOptions.find(g => g.id === r.gameId)?.name || 'den Favoriten';
-          items.push({emoji:'🧲', name:'Magnet-Joker', playerName:r.playerName, color, detail:`${r.playerName} verstärkt ${gameName} mit dem Magnet-Joker!`});
+          items.push({type:'magnet', emoji:'🧲', title:'MAGNET!', playerName:r.playerName, color, gameName, detail:`verstärkt ${gameName}!`, note:'Die Stimme zählt dreifach.'});
         }
         return items;
       });
@@ -8818,12 +8883,25 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Roulette läuft im großen Fenster...</p></div>';
     if (!modal || !stage) return;
     modal.classList.add('open');
-    stage.innerHTML = `<div class="game-vote-roulette-heading">Joker-Aufdeckung</div><div class="game-vote-roulette-title" id="game-vote-roulette-title">${items.length ? 'Diese Auswahl-Joker wurden eingesetzt' : 'Keine Auswahl-Joker eingesetzt'}</div><div class="game-vote-reveal-list">${items.length ? items.map((item, index) => `<div class="game-vote-reveal-row" style="--reveal-color:${item.color};--reveal-glow:${item.color}22;animation-delay:${index * 120}ms"><div class="game-vote-reveal-emoji">${item.emoji}</div><div><div class="game-vote-reveal-player">${esc(item.playerName)}</div><div class="game-vote-reveal-text"><strong>${esc(item.name)}:</strong> ${esc(item.detail)}</div></div></div>`).join('') : '<div style="margin:auto;text-align:center;font-size:clamp(3rem,8vw,7rem)">🎲</div>'}</div>`;
-    setTimeout(() => {
+    const startRoulette = () => {
       const entries = getShuffledGameVoteDisplayEntries();
       stage.innerHTML = `<div class="game-vote-roulette-heading">Spielwahl-Roulette</div><div class="game-vote-roulette-title" id="game-vote-roulette-title">Welches Spiel wird gewählt?</div><div class="mk-vote-stage game-vote-roulette-cards">${renderGameVoteRouletteCards(entries)}</div>`;
       window.runMarioKartSelectionAnimation();
-    }, items.length ? 4200 : 1800);
+    };
+    if (!items.length) {
+      stage.innerHTML = '<div class="game-vote-roulette-heading">Joker-Aufdeckung</div><div class="game-vote-roulette-title" id="game-vote-roulette-title">Keine Auswahl-Joker eingesetzt</div><div style="margin:auto;text-align:center;font-size:clamp(3rem,8vw,7rem)">🎲</div>';
+      setTimeout(startRoulette, 1300);
+      return;
+    }
+    let revealIndex = 0;
+    const revealNext = () => {
+      const item = items[revealIndex];
+      stage.innerHTML = `<div class="game-vote-roulette-heading">Joker-Aufdeckung</div><div class="roulette-joker-reveal roulette-reveal-${item.type}" style="--player-color:${item.color}"><div class="roulette-joker-reveal-card"><div class="roulette-joker-reveal-emoji">${item.emoji}</div><div class="roulette-joker-reveal-title">${esc(item.title)}</div><div class="roulette-joker-reveal-detail"><span class="roulette-joker-reveal-player">${esc(item.playerName)}</span> ${esc(item.detail)}</div>${item.note ? `<div class="roulette-joker-reveal-note">${esc(item.note)}</div>` : ''}</div></div>`;
+      if (item.type === 'ban') playBanRevealSound(); else playMagnetRevealSound();
+      revealIndex++;
+      setTimeout(revealIndex < items.length ? revealNext : startRoulette, 1900);
+    };
+    revealNext();
   }
   window.showGameVoteJokerRevealThenStart = showGameVoteJokerRevealThenStart;
 
@@ -8849,27 +8927,50 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const weightSum = weights.reduce((sum, value) => sum + value, 0);
     const delays = weights.map(value => Math.max(45, Math.round(durationMs * value / weightSum)));
     const sequence = [];
-    for (let i = 0; i < tickCount - 1; i++) sequence.push(pickRandom(activeEntries));
+    let visualIndex = Math.floor(Math.random() * activeEntries.length);
+    for (let i = 0; i < tickCount - 1; i++) {
+      if (activeEntries.length === 1) {
+        sequence.push(activeEntries[0]);
+        continue;
+      }
+      const roll = Math.random();
+      let jump = roll < .16 ? -(1 + Math.floor(Math.random() * Math.min(2, activeEntries.length - 1)))
+        : roll < .34 ? 2 + Math.floor(Math.random() * Math.min(3, activeEntries.length - 1))
+        : 1 + Math.floor(Math.random() * Math.min(2, activeEntries.length - 1));
+      visualIndex = (visualIndex + jump + activeEntries.length) % activeEntries.length;
+      const previous = sequence[sequence.length - 1];
+      if (previous?.voteKey === activeEntries[visualIndex].voteKey) visualIndex = (visualIndex + 1) % activeEntries.length;
+      sequence.push(activeEntries[visualIndex]);
+    }
+    if (sequence.length && activeEntries.length > 1 && sequence[sequence.length - 1].voteKey === winnerEntry.voteKey) {
+      sequence[sequence.length - 1] = activeEntries.find(entry => entry.voteKey !== winnerEntry.voteKey);
+    }
     sequence.push(winnerEntry);
     const cards = [...document.querySelectorAll('#game-vote-roulette-stage .mk-vote-card')];
     const result = document.getElementById('result-input-area');
     if (result) result.innerHTML = '<div class="empty-state"><div class="icon">🏁</div><p>Auswahl läuft...</p></div>';
     if (!cards.length) { window.finishMarioKartSelection(winnerEntry.gameId, winnerEntry); return; }
     let tick = 0;
+    let previousVoteKey = null;
     const step = () => {
       const entry = sequence[tick];
+      const changed = entry.voteKey !== previousVoteKey;
+      const finalStep = tick === sequence.length - 1;
       cards.forEach(card => {
         const isDisabled = card.dataset.disabled === '1';
         const active = card.dataset.voteKey === entry.voteKey;
         card.classList.toggle('active', active && !isDisabled);
+        card.classList.toggle('roulette-card-active', active && !isDisabled);
+        card.classList.toggle('roulette-card-final-step', active && !isDisabled && finalStep);
         card.classList.toggle('winner', false);
         card.classList.toggle('dimmed', isDisabled);
+        card.classList.toggle('roulette-card-banned', isDisabled);
       });
-      // One sound per visible highlight change; the scheduled delays slow both together.
-      playMKTikSound(tick / Math.max(sequence.length - 1, 1));
+      if (changed) playRouletteTickSound(tick / Math.max(sequence.length - 1, 1), finalStep);
+      previousVoteKey = entry.voteKey;
       tick++;
       if (tick >= sequence.length) {
-        setTimeout(() => window.showMarioKartWinnerMoment(winnerEntry), 320);
+        setTimeout(() => window.showMarioKartWinnerMoment(winnerEntry), 520);
         return;
       }
       setTimeout(step, delays[tick - 1]);
@@ -8888,25 +8989,28 @@ document.addEventListener('sm-mobile-local-refresh', e => {
       const isDisabled = card.dataset.disabled === '1';
       const winner = winnerEntry ? card.dataset.voteKey === winnerEntry.voteKey : card.dataset.gameId === gameId;
       card.classList.toggle('winner', winner && !isDisabled);
+      card.classList.toggle('roulette-card-winner', winner && !isDisabled);
       card.classList.toggle('dimmed', isDisabled || !winner);
+      card.classList.toggle('roulette-card-dimmed', !isDisabled && !winner);
+      card.classList.toggle('roulette-card-banned', isDisabled);
       card.classList.toggle('active', winner && !isDisabled);
     });
     const stage = document.getElementById('game-vote-roulette-stage');
     if (stage && g) stage.classList.add('roulette-resolving');
-    playTone(784, .18, 'triangle', .16, 0);
-    playTone(1047, .28, 'triangle', .14, .16);
     setTimeout(() => {
       if (!stage || !g) return;
       stage.classList.remove('roulette-resolving');
       stage.innerHTML = `<div class="game-vote-roulette-heading">Spielwahl-Roulette</div>
-        <div class="game-vote-roulette-title" id="game-vote-roulette-title">Das nächste Spiel ist</div>
         <div class="mk-winner-moment" style="--winner-color:${winnerColor};border-color:${winnerColor}">
-          <div class="game-vote-winner-label">Gewählt!</div>
+          <div class="roulette-final-title">🎉 GEWÄHLT!</div>
+          <div class="game-vote-winner-label">Das nächste Spiel ist:</div>
           <div class="game-vote-winner-player">${esc(winnerEntry?.playerName || 'Ausgewählt')}</div>
+          ${winnerEntry?.jokerBadge?.includes('Magnet') ? '<div class="roulette-winner-magnet">🧲 Magnet-Karte</div>' : ''}
           <div class="mk-winner-cover">${renderCoverFallbackHtml(g)}</div>
           <div class="game-vote-winner-name">${esc(g.name)}</div>
           <div style="font-size:clamp(.82rem,1vw,1rem);color:var(--muted);margin-top:10px">${TYPE_LABELS[g.type] || g.type} · ${g.dur || '?'}min</div>
         </div>`;
+      playRouletteWinnerSound();
     }, 620);
     setTimeout(() => window.finishMarioKartSelection(gameId, winnerEntry), 2700);
   }
