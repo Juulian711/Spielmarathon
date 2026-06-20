@@ -596,11 +596,6 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
         <button class="btn btn-gold" onclick="openTournamentHistory()" style="width:100%">Alte Turniere ansehen</button>
       </div>
 
-      <div class="card" style="margin-top:16px">
-        <div class="card-title">📊 Globale Spielstatistiken</div>
-        <p style="font-size:.85rem;color:var(--muted);line-height:1.5;margin-bottom:12px">Auswahl, Joker-Einsätze und gespielte Partien über alle Marathons hinweg.</p>
-        <button class="btn btn-secondary" onclick="openGlobalStatsScreen()" style="width:100%">Statistiken öffnen</button>
-      </div>
     </div>
 
     <!-- Right: Games -->
@@ -1759,7 +1754,7 @@ function defaultMarathonName() {
 }
 
 function buildSessionSnapshot(name, finalize=false) {
-  return {
+  const snapshot = {
     id: uid(),
     name,
     date: new Date().toISOString(),
@@ -1813,6 +1808,8 @@ function buildSessionSnapshot(name, finalize=false) {
     marathonStarted: !!state._marathonStarted,
     marathonFinished: !!state._marathonFinished
   };
+  // Der Snapshot darf beim anschließenden Runtime-Reset keine Referenzen auf state behalten.
+  return JSON.parse(JSON.stringify(snapshot));
 }
 
 function getVetoEligibleGameCount(source = state) {
@@ -4143,10 +4140,10 @@ function buildResultInput(g, entry) {
         <div class="rule-banner-title">⭐ Sonderregel ${ri+1} – +${pts.special} Punkt</div>
         <div style="font-weight:600;font-size:.88rem;margin-bottom:8px">${esc(r)}</div>
         <div class="special-check" style="margin:0">
-          ${state.players.map(p => `
+          ${state.players.map((p, playerIndex) => `
             <label class="special-check-item">
-              <input type="checkbox" id="csr-${ri}-${esc(p.name)}"/>
-              <label for="csr-${ri}-${esc(p.name)}">${esc(p.name)}</label>
+              <input type="checkbox" id="csr-${ri}-${playerIndex}"/>
+              <label for="csr-${ri}-${playerIndex}">${esc(p.name)}</label>
             </label>`).join('')}
         </div>
       </div>`).join('');
@@ -4158,7 +4155,7 @@ function buildResultInput(g, entry) {
         <button class="btn btn-secondary" id="btn-coop-loss" onclick="selectCoop('loss')">💀 Niederlage</button>
       </div>
       <hr class="divider"/>
-      <p style="font-size:.8rem;color:var(--gold);margin-bottom:6px">🃏 ${slots} Sonderregel${slots>1?'n':''} – wer hat sie erfüllt?</p>
+      <p style="font-size:.8rem;color:var(--gold);margin-bottom:6px">🃏 ${slots} Sonderregel${slots>1?'n':''} – wer hat sie erfüllt? Sonderpunkte gelten pro Person.</p>
       ${rulesHtml}
       <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="submitResult('coop')">✅ Bestätigen</button>`;
   }
@@ -4168,12 +4165,12 @@ function buildResultInput(g, entry) {
 function buildSpecialCB(entry) {
   return `
     <hr class="divider"/>
-    <p style="font-size:.78rem;color:var(--gold);margin-bottom:8px">⭐ Sonderregel: „${esc(entry.rule)}"<br><span style="color:var(--muted)">Wer hat es geschafft? (+${pts.special} Punkt)</span></p>
+    <p style="font-size:.78rem;color:var(--gold);margin-bottom:8px">⭐ Sonderregel: „${esc(entry.rule)}"<br><span style="color:var(--muted)">Wer hat die Sonderregel erfüllt? Sonderpunkte gelten pro Person. (+${pts.special} Punkt)</span></p>
     <div class="special-check">
-      ${state.players.map(p =>
+      ${state.players.map((p, playerIndex) =>
         `<label class="special-check-item">
-          <input type="checkbox" id="sr-${esc(p.name)}"/>
-          <label for="sr-${esc(p.name)}">${esc(p.name)}</label>
+          <input type="checkbox" id="sr-${playerIndex}"/>
+          <label for="sr-${playerIndex}">${esc(p.name)}</label>
         </label>`).join('')}
     </div>`;
 }
@@ -4252,8 +4249,8 @@ function submitResult(type) {
   if (type === 'coop' && entry.coopRules) {
     // Each rule checked per player = +pts.special
     entry.coopRules.forEach((r, ri) => {
-      state.players.forEach(p => {
-        const cb = document.getElementById(`csr-${ri}-${p.name}`);
+      state.players.forEach((p, playerIndex) => {
+        const cb = document.getElementById(`csr-${ri}-${playerIndex}`);
         if (cb?.checked) {
           pointsMap[p.name] = (pointsMap[p.name]||0) + pts.special;
           specialW[p.name] = (specialW[p.name]||0) + 1;
@@ -4261,8 +4258,8 @@ function submitResult(type) {
       });
     });
   } else {
-    state.players.forEach(p => {
-      const cb = document.getElementById(`sr-${p.name}`);
+    state.players.forEach((p, playerIndex) => {
+      const cb = document.getElementById(`sr-${playerIndex}`);
       if (cb?.checked) { pointsMap[p.name] = (pointsMap[p.name]||0) + pts.special; specialW[p.name] = 1; }
     });
   }
@@ -4883,17 +4880,29 @@ function openSaveAsTournament() {
 function openSaveModal() { openModal('modal-save'); }
 
 function finishTournamentAndReturnHome(snapshot, name) {
-  saveTournament({id: snapshot.id, name, date: snapshot.date,
+  const tournament = {id: snapshot.id, name, date: snapshot.date, finalized: true,
     players: snapshot.players, scores: snapshot.scores,
     history: snapshot.history, skipped: snapshot.skipped || [], games: snapshot.games,
+    plan: snapshot.plan || [],
     gameCategories: snapshot.gameCategories || [],
     marathonMode: normalizeMarathonMode(snapshot.marathonMode),
     marathonScope: normalizeMarathonScope(snapshot.marathonScope),
     configuredGameCount: snapshot.configuredGameCount || 0,
     targetGameCount: snapshot.targetGameCount || snapshot.plan?.length || 0,
+    completedGameCount: snapshot.history?.length || 0,
     actualGameCount: snapshot.history?.length || 0,
     settings: snapshot.settings || {eventsEnabled:true, secretGoalsEnabled:true},
-    timeLimit: snapshot.timeLimit || 0});
+    timeLimit: snapshot.timeLimit || 0};
+
+  // Erst nach nachweislich erfolgreicher Archivierung darf der Runtime-State verschwinden.
+  if (!saveTournament(tournament)) return false;
+
+  // Ein abgeschlossenes Turnier ist kein fortsetzbarer Zwischenstand.
+  const sessions = getSessions();
+  if (sessions[snapshot.id]) {
+    delete sessions[snapshot.id];
+    setSessions(sessions);
+  }
 
   tournamentHomeLock = true;
   try {
@@ -4916,20 +4925,21 @@ function finishTournamentAndReturnHome(snapshot, name) {
     if (typeof renderFbStatus === 'function') renderFbStatus();
     showToast('🏆 Als Turnier gespeichert!');
   }
+  return true;
 }
 
 function saveSession(finalize) {
   const name = document.getElementById('save-name').value.trim() ||
     `Marathon ${new Date().toLocaleDateString('de-DE')}`;
 
-  const sessions = getSessions();
   const snapshot = buildSessionSnapshot(name, finalize);
-  sessions[snapshot.id] = snapshot;
-  setSessions(sessions);
   if (finalize) {
     finishTournamentAndReturnHome(snapshot, name);
     return;
   }
+  const sessions = getSessions();
+  sessions[snapshot.id] = snapshot;
+  setSessions(sessions);
   closeModal('modal-save');
   showToast('💾 Session gespeichert!');
   renderSavedSessions();
@@ -5076,13 +5086,88 @@ function deleteSession(id) {
 // ═══════════════════════════════════════════════════════════
 //  TOURNAMENT HISTORY
 // ═══════════════════════════════════════════════════════════
-function saveTournament(t) {
-  const ts = getTournaments();
-  ts[t.id] = t;
-  try { localStorage.setItem('sm_tournaments_v2', JSON.stringify(ts)); } catch {}
+const TOURNAMENT_STORAGE_KEY = 'sm_tournaments_v2';
+const LEGACY_TOURNAMENT_STORAGE_KEYS = ['sm_tournaments', 'sm_tournament_history'];
+
+function readTournamentStore(key) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return {};
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    return Object.fromEntries(parsed.filter(t => t?.id).map(t => [t.id, t]));
+  }
+  return parsed && typeof parsed === 'object' ? parsed : {};
 }
+
+function saveTournament(t) {
+  try {
+    const tournaments = getTournaments();
+    tournaments[t.id] = JSON.parse(JSON.stringify(t));
+    localStorage.setItem(TOURNAMENT_STORAGE_KEY, JSON.stringify(tournaments));
+    const verification = readTournamentStore(TOURNAMENT_STORAGE_KEY);
+    if (!verification[t.id]) throw new Error('Turnier konnte nicht verifiziert werden.');
+    return true;
+  } catch (error) {
+    console.error('[Tournament save failed]', error);
+    showToast('Turnier konnte nicht gespeichert werden. Der Marathon bleibt erhalten.');
+    return false;
+  }
+}
+
 function getTournaments() {
-  try { return JSON.parse(localStorage.getItem('sm_tournaments_v2') || '{}'); } catch { return {}; }
+  let current = {};
+  try {
+    current = readTournamentStore(TOURNAMENT_STORAGE_KEY);
+  } catch (error) {
+    console.error('[Tournament load failed]', error);
+  }
+  let migrated = false;
+  LEGACY_TOURNAMENT_STORAGE_KEYS.forEach(key => {
+    try {
+      const legacy = readTournamentStore(key);
+      Object.entries(legacy).forEach(([id, tournament]) => {
+        if (!current[id]) {
+          current[id] = tournament;
+          migrated = true;
+        }
+      });
+    } catch (error) {
+      console.warn('[Legacy tournament migration skipped]', key, error);
+    }
+  });
+  if (migrated) {
+    try {
+      localStorage.setItem(TOURNAMENT_STORAGE_KEY, JSON.stringify(current));
+    } catch (error) {
+      console.error('[Tournament migration failed]', error);
+    }
+  }
+  return current;
+}
+
+function deleteTournament(id) {
+  try {
+    const tournaments = getTournaments();
+    delete tournaments[id];
+    localStorage.setItem(TOURNAMENT_STORAGE_KEY, JSON.stringify(tournaments));
+    LEGACY_TOURNAMENT_STORAGE_KEYS.forEach(key => {
+      try {
+        const legacy = readTournamentStore(key);
+        if (legacy[id]) {
+          delete legacy[id];
+          localStorage.setItem(key, JSON.stringify(legacy));
+        }
+      } catch (error) {
+        console.warn('[Legacy tournament cleanup skipped]', key, error);
+      }
+    });
+    if (readTournamentStore(TOURNAMENT_STORAGE_KEY)[id]) throw new Error('Turnier konnte nicht gelöscht werden.');
+    return true;
+  } catch (error) {
+    console.error('[Tournament delete failed]', error);
+    showToast('Turnier konnte nicht gelöscht werden.');
+    return false;
+  }
 }
 
 function openTournamentHistory() {
@@ -5102,12 +5187,14 @@ function renderTournamentList() {
     const winner = sorted[0]?.[0] || '?';
     const modeLabel = getMarathonModeLabel(t.marathonMode || t.selectionMode);
     const scopeLabel = getMarathonScopeLabel(t.marathonScope || 'time');
+    const plannedCount = t.targetGameCount ?? t.configuredGameCount ?? t.plan?.length ?? 0;
+    const completedCount = t.completedGameCount ?? t.actualGameCount ?? t.history?.length ?? 0;
     return `<div class="tournament-item" onclick="openTournamentDetail('${t.id}')">
       <div style="font-size:1.8rem">🏆</div>
       <div class="tournament-meta">
         <div style="font-weight:700">${esc(t.name)}</div>
         <div class="tournament-winner">🥇 ${esc(winner)} · ${(t.players||[]).map(p=>esc(p.name)).join(', ')}</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${new Date(t.date).toLocaleString('de-DE')} · ${esc(modeLabel)} · ${esc(scopeLabel)}</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${new Date(t.date).toLocaleString('de-DE')} · ${esc(modeLabel)} · ${esc(scopeLabel)} · ${plannedCount} geplant / ${completedCount} gespielt</div>
       </div>
       <span style="color:var(--muted);font-size:.9rem">→</span>
     </div>`;
@@ -5120,9 +5207,7 @@ function openTournamentDetail(id) {
   document.getElementById('detail-title').textContent = `🏆 ${t.name}`;
   document.getElementById('detail-delete-btn').onclick = () => {
     showConfirm('Turnier löschen?', 'Für immer und ewig weg!', () => {
-      const ts = getTournaments();
-      delete ts[id];
-      try { localStorage.setItem('sm_tournaments_v2', JSON.stringify(ts)); } catch {}
+      if (!deleteTournament(id)) return;
       showScreen('screen-tournaments');
       renderTournamentList();
       showToast('Turnier gelöscht');
@@ -5167,7 +5252,7 @@ function openTournamentDetail(id) {
           </div>`).join('')}
       </div>
       <div style="margin-top:12px;font-size:.78rem;color:var(--muted)">
-        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.actualGameCount ?? (t.history||[]).length)} tatsächlich gespielt · 🧭 ${esc(modeLabel)} · ${esc(scopeLabel)} · ${esc(scopeMeta)}
+        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.completedGameCount ?? t.actualGameCount ?? (t.history||[]).length)} tatsächlich gespielt · 🧭 ${esc(modeLabel)} · ${esc(scopeLabel)} · ${esc(scopeMeta)}
       </div>
     </div>
     <div class="card">
