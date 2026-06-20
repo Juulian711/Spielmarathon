@@ -110,6 +110,10 @@ header::before{content:'';position:absolute;inset:0;background:radial-gradient(e
 .game-search-wrap{position:relative}
 .game-search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);z-index:2;line-height:1}
 .game-search-wrap #game-library-search{padding-left:46px !important}
+.global-stats-search-wrap{position:relative;width:100%}
+.global-stats-search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none;z-index:2;line-height:1;color:var(--muted)}
+.global-stats-search-wrap #global-stats-search,
+.global-stats-search-wrap #global-stats-screen-search{padding-left:46px !important}
 .game-library-count{font-size:.76rem;color:var(--muted);padding:0 2px 10px;white-space:nowrap}
 .game-library-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:14px;background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:10px}
 .game-library-toolbar .bulk-activate{margin-left:auto}
@@ -6155,7 +6159,7 @@ function renderGlobalStatsScreen() {
     ['Meistgebannt', topName('banTargetCount')],
     ['Meiste Magnet-Hilfe', topName('magnetVoteCount')]
   ].map(([label,value]) => `<div class="global-stats-summary-card"><div class="global-stats-summary-label">${label}</div><div class="global-stats-summary-value" title="${esc(String(value))}">${esc(String(value))}</div></div>`).join('');
-  const controls = `<div class="card" style="margin-bottom:16px"><div class="game-library-searchbar global-stats-controls" style="margin:0"><div><label for="global-stats-screen-search">Spiel suchen</label><div class="game-search-wrap"><span class="game-search-icon">🔎</span><input id="global-stats-screen-search" type="text" placeholder="Suche nach Spielname" value="${esc(globalStatsSearchQuery)}" oninput="onGlobalStatsScreenSearch(this.value)"></div></div><div style="min-width:240px"><label for="global-stats-screen-sort">Sortieren</label><select id="global-stats-screen-sort" onchange="setGlobalStatsScreenSort(this.value)"><option value="played" ${globalStatsSortMode==='played'?'selected':''}>am häufigsten gespielt</option><option value="voted" ${globalStatsSortMode==='voted'?'selected':''}>am häufigsten gewählt</option><option value="banned" ${globalStatsSortMode==='banned'?'selected':''}>am häufigsten gebannt</option><option value="magnet" ${globalStatsSortMode==='magnet'?'selected':''}>am häufigsten mit Magnet verstärkt</option><option value="roulette" ${globalStatsSortMode==='roulette'?'selected':''}>häufigster Roulette-Sieger</option><option value="shown" ${globalStatsSortMode==='shown'?'selected':''}>am häufigsten angezeigt</option></select></div></div></div>`;
+  const controls = `<div class="card" style="margin-bottom:16px"><div class="game-library-searchbar global-stats-controls" style="margin:0"><div><label for="global-stats-screen-search">Spiel suchen</label><div class="global-stats-search-wrap"><span class="global-stats-search-icon" aria-hidden="true">🔎</span><input id="global-stats-screen-search" type="text" placeholder="Suche nach Spielname" value="${esc(globalStatsSearchQuery)}" oninput="onGlobalStatsScreenSearch(this.value)"></div></div><div style="min-width:240px"><label for="global-stats-screen-sort">Sortieren</label><select id="global-stats-screen-sort" onchange="setGlobalStatsScreenSort(this.value)"><option value="played" ${globalStatsSortMode==='played'?'selected':''}>am häufigsten gespielt</option><option value="voted" ${globalStatsSortMode==='voted'?'selected':''}>am häufigsten gewählt</option><option value="banned" ${globalStatsSortMode==='banned'?'selected':''}>am häufigsten gebannt</option><option value="magnet" ${globalStatsSortMode==='magnet'?'selected':''}>am häufigsten mit Magnet verstärkt</option><option value="roulette" ${globalStatsSortMode==='roulette'?'selected':''}>häufigster Roulette-Sieger</option><option value="shown" ${globalStatsSortMode==='shown'?'selected':''}>am häufigsten angezeigt</option></select></div></div></div>`;
   if (!rows.length) {
     c.innerHTML = `<div class="global-stats-summary">${summary}</div>${controls}<div class="card"><div class="empty-state"><div class="icon">📊</div><p>${query ? 'Keine Spiele für diese Suche gefunden.' : 'Noch keine globalen Spielstatistiken vorhanden.'}</p></div></div>`;
     return;
@@ -6199,7 +6203,7 @@ function renderGlobalGameStatsLibrary(c, tabs) {
   const rows = sortGlobalStatsRows(getGlobalStatsRows().filter(row => !query || row.gameName.toLowerCase().includes(query)));
   const controls = '<div class="game-library-searchbar">'
     + '<div class="game-library-search"><label for="global-stats-search" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Statistiken suchen</label>'
-    + '<div class="game-search-wrap"><span class="game-search-icon" aria-hidden="true">🔎</span><input type="text" id="global-stats-search" placeholder="Spielname" value="' + esc(globalStatsSearchQuery) + '" oninput="onGlobalStatsSearch(this.value)"/></div></div>'
+    + '<div class="global-stats-search-wrap"><span class="global-stats-search-icon" aria-hidden="true">🔎</span><input type="text" id="global-stats-search" placeholder="Spiel suchen" value="' + esc(globalStatsSearchQuery) + '" oninput="onGlobalStatsSearch(this.value)"/></div></div>'
     + '<div style="min-width:220px"><label for="global-stats-sort" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Sortieren</label>'
     + '<select id="global-stats-sort" onchange="setGlobalStatsSort(this.value)">'
     + '<option value="played" ' + (globalStatsSortMode==='played'?'selected':'') + '>am häufigsten gespielt</option>'
