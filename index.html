@@ -588,15 +588,6 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
           <input type="number" id="configured-game-count" value="5" min="1" max="100" oninput="updateMarathonConfigPreview()"/>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">Die Spieldauer wird in diesem Modus nicht berücksichtigt.</div>
         </div>
-        <div class="form-group" style="margin-top:14px">
-          <label style="font-weight:800;color:var(--text);margin-bottom:8px">Spieltypen für diesen Marathon</label>
-          <div id="marathon-game-type-options" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px">
-            <label class="chip active" style="justify-content:center;margin:0;cursor:pointer"><input type="checkbox" data-marathon-game-type="ffa" checked onchange="toggleMarathonGameType('ffa',this.checked)" style="margin-right:6px">Jeder gegen Jeden</label>
-            <label class="chip active" style="justify-content:center;margin:0;cursor:pointer"><input type="checkbox" data-marathon-game-type="2v2" checked onchange="toggleMarathonGameType('2v2',this.checked)" style="margin-right:6px">Team gegen Team</label>
-            <label class="chip active" style="justify-content:center;margin:0;cursor:pointer"><input type="checkbox" data-marathon-game-type="3v1" checked onchange="toggleMarathonGameType('3v1',this.checked)" style="margin-right:6px">1 gegen Alle</label>
-            <label class="chip active" style="justify-content:center;margin:0;cursor:pointer"><input type="checkbox" data-marathon-game-type="coop" checked onchange="toggleMarathonGameType('coop',this.checked)" style="margin-right:6px">Kooperativ</label>
-          </div>
-        </div>
         <div id="marathon-config-preview" style="background:rgba(78,205,196,.08);border:1px solid rgba(78,205,196,.25);border-radius:9px;padding:9px 11px;font-size:.78rem;color:var(--green);font-weight:800"></div>
       </div>
 
@@ -1482,7 +1473,6 @@ let state = {
   players:[],
   games:[],
   gameCategories:[],
-  enabledGameTypes:{ffa:true,'2v2':true,'3v1':true,coop:true},
   plan:[],
   currentIdx:-1,
   scores:{},
@@ -1866,7 +1856,6 @@ function buildSessionSnapshot(name, finalize=false) {
     date: new Date().toISOString(),
     finalized: finalize,
     settings: {...ensureFeatureSettings()},
-    enabledGameTypes: normalizeEnabledGameTypes(state.enabledGameTypes),
     players: state.players,
     scores: state.scores,
     history: state.history,
@@ -1928,13 +1917,13 @@ function getVetoEligibleGameCount(source = state) {
   if (previewOrder.length) {
     const previewGames = previewOrder.map(id => games.find(g => g.id === id)).filter(Boolean);
     return applyCategoryLimits(previewGames.filter(g =>
-      g.enabled !== false &&
+      isGameActive(g) &&
       g.minP <= players.length &&
       g.maxP >= players.length
     )).length;
   }
   return applyCategoryLimits(games.filter(g =>
-    g.enabled !== false &&
+    isGameActive(g) &&
     g.minP <= players.length &&
     g.maxP >= players.length
   )).length;
@@ -2336,58 +2325,20 @@ function deleteGame(id) {
 function getCompatibleGames() {
   const n = state.players.length;
   return state.games.filter(g => {
-    if (g.enabled === false) return false; // excluded from marathon
-    if (!isGameTypeEnabled(g)) return false;
+    if (!isGameActive(g)) return false; // excluded from marathon
     return g.minP <= n && g.maxP >= n;
   });
 }
 
-const DEFAULT_ENABLED_GAME_TYPES = Object.freeze({ffa:true,'2v2':true,'3v1':true,coop:true});
-
-function normalizeEnabledGameTypes(value) {
-  const source = value && typeof value === 'object' ? value : {};
-  return Object.fromEntries(Object.keys(DEFAULT_ENABLED_GAME_TYPES).map(type => [type, source[type] !== false]));
+function isGameActive(game) {
+  if (!game) return false;
+  return game.active === undefined ? game.enabled !== false : game.active !== false;
 }
 
-function isGameTypeEnabled(game) {
-  state.enabledGameTypes = normalizeEnabledGameTypes(state.enabledGameTypes);
-  return state.enabledGameTypes[game?.type || 'ffa'] !== false;
-}
-
-function getEnabledGameTypeLabels(value = state.enabledGameTypes) {
-  const enabled = normalizeEnabledGameTypes(value);
-  const labels = {ffa:'Jeder gegen Jeden','2v2':'Team gegen Team','3v1':'1 gegen Alle',coop:'Kooperativ'};
-  return Object.keys(labels).filter(type => enabled[type]).map(type => labels[type]);
-}
-
-function hasEnabledGameTypes() {
-  return Object.values(normalizeEnabledGameTypes(state.enabledGameTypes)).some(Boolean);
-}
-
-function syncEnabledGameTypeInputs() {
-  state.enabledGameTypes = normalizeEnabledGameTypes(state.enabledGameTypes);
-  document.querySelectorAll('[data-marathon-game-type]').forEach(input => {
-    input.checked = state.enabledGameTypes[input.dataset.marathonGameType] !== false;
-    input.closest('label')?.classList.toggle('active', input.checked);
-  });
-}
-
-function toggleMarathonGameType(type, enabled) {
-  state.enabledGameTypes = normalizeEnabledGameTypes(state.enabledGameTypes);
-  const next = {...state.enabledGameTypes, [type]:!!enabled};
-  if (!Object.values(next).some(Boolean)) {
-    showToast('Mindestens ein Spieltyp muss aktiv sein.');
-    syncEnabledGameTypeInputs();
-    return false;
-  }
-  const hadPlanPreview = state.previewOrder.length > 0;
-  state.enabledGameTypes = next;
-  state.previewOrder = [];
-  syncEnabledGameTypeInputs();
-  updateMarathonConfigPreview(true);
-  saveLS();
-  if (hadPlanPreview) generateAndShowPlan();
-  return true;
+function setGameActive(game, active) {
+  if (!game) return;
+  game.active = !!active;
+  game.enabled = !!active;
 }
 
 function getAvgDur(g) {
@@ -2564,17 +2515,13 @@ function renderGameListSetup() {
 }
 
 function generateAndShowPlan() {
-  if (!hasEnabledGameTypes()) {
-    showToast('Mindestens ein Spieltyp muss aktiv sein.');
-    return;
-  }
   state.marathonMode = getSelectedMarathonMode();
   readMarathonScopeConfigFromUI();
   configureMarathonTarget();
   const n = state.players.length;
   const compatible = n > 0
     ? getCompatibleGames()
-    : state.games.filter(g => g.enabled !== false && isGameTypeEnabled(g));
+    : state.games.filter(isGameActive);
   if (!compatible.length) {
     showToast('Keine passenden Spiele für die ausgewählten Spieltypen verfügbar.');
     return;
@@ -2933,7 +2880,6 @@ function startMarathon() {
   state._hostResolutionPending = false;
   document.getElementById('modal-host-popup')?.classList.remove('open');
   normalizeHostResolutionState();
-  if (!hasEnabledGameTypes()) { showToast('Mindestens ein Spieltyp muss aktiv sein.'); return; }
   if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
   const compatible = getCompatibleGames();
   if (!compatible.length) { showToast('Keine passenden Spiele für die ausgewählten Spieltypen verfügbar.'); return; }
@@ -3116,7 +3062,7 @@ function buildPlan() {
     pool = state.previewOrder
       .map(id => state.games.find(g => g.id === id))
       .filter(Boolean)
-      .filter(g => g.enabled !== false && isGameTypeEnabled(g)); // respect enabled and type filters
+      .filter(isGameActive); // respect library activation state
     // Filter for player count compatibility
     const n = state.players.length;
     pool = pool.filter(g => g.minP <= n && g.maxP >= n);
@@ -5053,7 +4999,6 @@ function finishTournamentAndReturnHome(snapshot, name) {
     history: snapshot.history, skipped: snapshot.skipped || [], games: snapshot.games,
     plan: snapshot.plan || [],
     gameCategories: snapshot.gameCategories || [],
-    enabledGameTypes: normalizeEnabledGameTypes(snapshot.enabledGameTypes),
     marathonMode: normalizeMarathonMode(snapshot.marathonMode),
     marathonScope: normalizeMarathonScope(snapshot.marathonScope),
     configuredGameCount: snapshot.configuredGameCount || 0,
@@ -5160,7 +5105,6 @@ function loadSession(id) {
     eventsEnabled: s.settings?.eventsEnabled !== false,
     secretGoalsEnabled: s.settings?.secretGoalsEnabled !== false
   };
-  state.enabledGameTypes = normalizeEnabledGameTypes(s.enabledGameTypes);
   state.players    = s.players || [];
   state.scores     = s.scores  || {};
   state.history    = s.history || [];
@@ -5404,7 +5348,6 @@ function openTournamentDetail(id) {
   const scopeMeta = normalizeMarathonScope(t.marathonScope || 'time') === 'time'
     ? `${t.timeLimit || '?'} Minuten · ${t.targetGameCount || (t.history||[]).length} Spiele geplant`
     : `${t.configuredGameCount || t.targetGameCount || (t.history||[]).length} Spiele geplant`;
-  const gameTypeMeta = getEnabledGameTypeLabels(t.enabledGameTypes).join(', ');
   const histHtml = (t.history||[]).map((h,i) => {
     const tags = [];
     if (h.vetoed) tags.push('<span style="font-size:.68rem;background:rgba(233,69,96,.2);color:var(--accent);padding:1px 6px;border-radius:4px">🗳️ Veto</span>');
@@ -5437,7 +5380,7 @@ function openTournamentDetail(id) {
           </div>`).join('')}
       </div>
       <div style="margin-top:12px;font-size:.78rem;color:var(--muted)">
-        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.completedGameCount ?? t.actualGameCount ?? (t.history||[]).length)} tatsächlich gespielt · 🧭 ${esc(modeLabel)} · ${esc(scopeLabel)} · ${esc(scopeMeta)}<br>Spieltypen: ${esc(gameTypeMeta)}
+        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.completedGameCount ?? t.actualGameCount ?? (t.history||[]).length)} tatsächlich gespielt · 🧭 ${esc(modeLabel)} · ${esc(scopeLabel)} · ${esc(scopeMeta)}
       </div>
     </div>
     <div class="card">
@@ -5755,8 +5698,7 @@ function saveLS() {
       marathonMode:normalizeMarathonMode(state.marathonMode),
       marathonScope:normalizeMarathonScope(state.marathonScope),
       timeLimit:state.timeLimit,
-      configuredGameCount:state.configuredGameCount,
-      enabledGameTypes:normalizeEnabledGameTypes(state.enabledGameTypes)
+      configuredGameCount:state.configuredGameCount
     }));
     return true;
   } catch (error) {
@@ -5770,7 +5712,6 @@ function saveCurrentToLS() {
   sessions['__autosave__'] = {
     id:'__autosave__', name:'Autosave', date:new Date().toISOString(),
     settings:{...ensureFeatureSettings()},
-    enabledGameTypes:normalizeEnabledGameTypes(state.enabledGameTypes),
     finalized:false, players:state.players, scores:state.scores,
     history:state.history, plan:state.plan, currentIdx:state.currentIdx,
     jokers:state.jokers, jokerUses:state.jokerUses || {}, marathonScope:normalizeMarathonScope(state.marathonScope), timeLimit:state.timeLimit, configuredGameCount:state.configuredGameCount, targetGameCount:state.targetGameCount, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
@@ -5834,7 +5775,6 @@ function loadLS() {
       state.marathonScope = normalizeMarathonScope(preferences.marathonScope);
       state.timeLimit = Math.max(1, parseInt(preferences.timeLimit, 10) || 120);
       state.configuredGameCount = Math.max(1, parseInt(preferences.configuredGameCount, 10) || 5);
-      state.enabledGameTypes = normalizeEnabledGameTypes(preferences.enabledGameTypes);
     }
     ensureFeatureSettings();
     normalizeGameCategories();
@@ -5880,9 +5820,9 @@ function openGameLibraryModalOld() {
         : '<span style="font-size:1.2rem">🎲</span>';
       const devLine = g.dev ? '<div style="font-size:.72rem;color:var(--muted)">' + esc(g.dev) + '</div>' : '';
       const durLabel = g.minDur && g.minDur !== g.dur ? g.minDur + '–' + g.dur : g.dur;
-      const rowStyle = 'border-bottom:1px solid rgba(255,255,255,.05);transition:.15s;' + (g.enabled===false?'opacity:.45':'');
+      const rowStyle = 'border-bottom:1px solid rgba(255,255,255,.05);transition:.15s;' + (!isGameActive(g)?'opacity:.45':'');
       return '<tr style="' + rowStyle + '" onmouseover="this.style.background=\'rgba(255,255,255,.03)\'" onmouseout="this.style.background=\'\'">'
-        + '<td style="padding:8px 8px;text-align:center"><input type="checkbox" ' + (g.enabled!==false?'checked':'') + ' style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleGameEnabled(\'' + g.id + '\',this.checked)"/></td>'
+        + '<td style="padding:8px 8px;text-align:center"><input type="checkbox" ' + (isGameActive(g)?'checked':'') + ' style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleGameEnabled(\'' + g.id + '\',this.checked)"/></td>'
         + '<td style="padding:8px 8px;color:var(--muted);font-weight:700">' + (i+1) + '</td>'
         + '<td style="padding:8px 8px"><div style="display:flex;align-items:center;gap:8px">' + cover + '<div><div style="font-weight:600">' + esc(g.name) + '</div>' + devLine + '</div></div></td>'
         + '<td style="padding:8px 8px"><span class="badge ' + TYPE_CLS[g.type] + '">' + TYPE_BADGE[g.type] + '</span></td>'
@@ -5908,8 +5848,8 @@ function openGameLibraryModalOld() {
     if (!filteredGames.length) {
       c.innerHTML = tabs + searchBar + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
     }
-    const allEnabled = filteredGames.length && filteredGames.every(g=>g.enabled!==false);
-    const noneEnabled = filteredGames.length && filteredGames.every(g=>g.enabled===false);
+    const allEnabled = filteredGames.length && filteredGames.every(isGameActive);
+    const noneEnabled = filteredGames.length && filteredGames.every(g=>!isGameActive(g));
     const cb = document.getElementById('select-all-games');
     if(cb){ cb.checked=!!allEnabled; cb.indeterminate=filteredGames.length && !allEnabled&&!noneEnabled; }
   }
@@ -5930,6 +5870,43 @@ let expandedGameCategories = new Set();
 let globalStatsSortMode = 'played';
 let globalStatsSearchQuery = '';
 let editingGameCategoryId = null;
+
+function getGameTypeActivationState(type) {
+  const gamesOfType = state.games.filter(game => game.type === type);
+  const allActive = gamesOfType.length > 0 && gamesOfType.every(isGameActive);
+  const noneActive = gamesOfType.length > 0 && gamesOfType.every(game => !isGameActive(game));
+  return {gamesOfType, allActive, noneActive, mixed:gamesOfType.length > 0 && !allActive && !noneActive};
+}
+
+function renderGameTypeActivationToolbar() {
+  const labels = {ffa:'Jeder gegen Jeden','2v2':'Team gegen Team','3v1':'1 gegen Alle',coop:'Kooperativ'};
+  const buttons = Object.entries(labels).map(([type, label]) => {
+    const status = getGameTypeActivationState(type);
+    const noGames = !status.gamesOfType.length;
+    const action = status.allActive ? 'deaktivieren' : 'aktivieren';
+    const stateLabel = noGames ? `${label}: keine Spiele vorhanden` : status.mixed ? `${label}: gemischt · alle aktivieren` : `${label} ${action}`;
+    const buttonClass = status.allActive ? 'btn-secondary' : 'btn-green';
+    return `<button class="btn ${buttonClass} btn-sm" onclick="toggleLibraryGameType('${type}')" ${noGames?'disabled':''} title="${esc(stateLabel)}" style="justify-content:center">${esc(stateLabel)}</button>`;
+  }).join('');
+  return `<div style="background:var(--surface);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px;margin-bottom:10px">
+    <div style="font-size:.76rem;font-weight:850;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Spieltypen aktivieren/deaktivieren</div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px">${buttons}</div>
+  </div>`;
+}
+
+function toggleLibraryGameType(type) {
+  const status = getGameTypeActivationState(type);
+  if (!status.gamesOfType.length) return;
+  const newActiveState = !status.allActive;
+  status.gamesOfType.forEach(game => setGameActive(game, newActiveState));
+  state.previewOrder = [];
+  saveLS();
+  renderGameListSetup();
+  updateGameCountBadge();
+  updateMarathonConfigPreview(true);
+  openGameLibraryModal('games');
+  showToast(`${status.gamesOfType.length} Spiel${status.gamesOfType.length===1?'':'e'} vom Typ ${TYPE_LABELS[type] || type} ${newActiveState?'aktiviert':'deaktiviert'}.`);
+}
 
 function gameMatchesLibrarySearch(g, query) {
   const q = String(query || '').trim().toLowerCase();
@@ -5991,10 +5968,11 @@ function toggleSelectedGamesActive() {
     openGameLibraryModal('games');
     return;
   }
-  const allActive = selectedGames.every(g => g.enabled !== false);
+  const allActive = selectedGames.every(isGameActive);
   const newActiveState = !allActive;
-  selectedGames.forEach(g => { g.enabled = newActiveState; });
+  selectedGames.forEach(g => setGameActive(g, newActiveState));
   saveLS();
+  updateMarathonConfigPreview(true);
   openGameLibraryModal('games');
   showToast(selectedGames.length + ' Spiel' + (selectedGames.length === 1 ? '' : 'e') + (newActiveState ? ' aktiviert' : ' deaktiviert'));
 }
@@ -6048,7 +6026,6 @@ function getSelectedMarathonMode() {
 function syncMarathonModeInput() {
   const sel = document.getElementById('marathon-mode');
   if (sel) sel.value = normalizeMarathonMode(state.marathonMode);
-  syncEnabledGameTypeInputs();
   syncMarathonScopeInputs();
 }
 
@@ -6169,8 +6146,9 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games', focusSearch
     + '<button class="btn btn-ghost btn-sm" onclick="clearGameLibrarySelection()" ' + (selectedCount?'':'disabled') + '>Auswahl aufheben</button>'
     + '<button class="btn btn-green btn-sm bulk-activate" onclick="toggleSelectedGamesActive()" ' + (selectedCount?'':'disabled') + '>Ausgewählte aktivieren/deaktivieren</button>'
     + '<button class="btn btn-danger btn-sm bulk-delete" onclick="deleteSelectedLibraryGames()" ' + (selectedCount?'':'disabled') + '>Alle ausgewählten Spiele löschen 🗑' + (selectedCount ? ' (' + selectedCount + ')' : '') + '</button></div>';
+  const gameTypeToolbar = renderGameTypeActivationToolbar();
   if (!state.games.length) {
-    c.innerHTML = tabs + '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
+    c.innerHTML = tabs + gameTypeToolbar + '<div class="empty-state"><div class="icon">🎲</div><p>Keine Spiele vorhanden</p></div>';
   } else {
     const rows = filteredGames.map(g => {
       const cover = g.coverImg
@@ -6179,24 +6157,24 @@ function openGameLibraryModal(tab = gameLibraryActiveTab || 'games', focusSearch
       const durLabel = g.minDur && g.minDur !== g.dur ? g.minDur + '-' + g.dur : g.dur;
       const categoryLabel = getCategoryName(getGameCategoryId(g)) || '-';
       const selected = selectedGameLibraryIds.has(g.id);
-      return '<div class="game-library-row ' + (selected?'selected ':'') + (g.enabled===false?'disabled':'') + '" role="button" tabindex="0" aria-pressed="' + (selected?'true':'false') + '" onclick="toggleGameLibraryRowSelection(\'' + g.id + '\',event)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleGameLibraryRowSelection(\'' + g.id + '\',event)}">'
+      return '<div class="game-library-row ' + (selected?'selected ':'') + (!isGameActive(g)?'disabled':'') + '" role="button" tabindex="0" aria-pressed="' + (selected?'true':'false') + '" onclick="toggleGameLibraryRowSelection(\'' + g.id + '\',event)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleGameLibraryRowSelection(\'' + g.id + '\',event)}">'
         + '<span class="game-library-select-mark" aria-hidden="true">✓</span>'
         + '<div class="game-library-game"><div class="game-library-cover">' + cover + '</div><div style="min-width:0"><div class="game-library-name">' + esc(g.name) + '</div><div class="game-library-dev">' + esc(g.dev || 'Kein Verlag angegeben') + '</div></div></div>'
         + '<div class="game-library-cell type"><span class="badge ' + TYPE_CLS[g.type] + '">' + TYPE_BADGE[g.type] + '</span></div>'
         + '<div class="game-library-cell category" title="' + esc(categoryLabel) + '">📁 ' + esc(categoryLabel) + '</div>'
         + '<div class="game-library-cell players">👥 ' + g.minP + '-' + g.maxP + '</div>'
         + '<div class="game-library-cell duration">⏱ ' + durLabel + ' min</div>'
-        + '<label class="game-library-active" title="Im Marathon enthalten" onclick="event.stopPropagation()"><input type="checkbox" ' + (g.enabled!==false?'checked':'') + ' onchange="toggleGameEnabled(\'' + g.id + '\',this.checked);openGameLibraryModal(\'games\')"/><span>' + (g.enabled!==false?'Aktiv':'Aus') + '</span></label>'
+        + '<label class="game-library-active" title="Im Marathon enthalten" onclick="event.stopPropagation()"><input type="checkbox" ' + (isGameActive(g)?'checked':'') + ' onchange="toggleGameEnabled(\'' + g.id + '\',this.checked);openGameLibraryModal(\'games\')"/><span>' + (isGameActive(g)?'Aktiv':'Aus') + '</span></label>'
         + '<button class="btn btn-secondary btn-sm game-library-edit" onclick="event.stopPropagation();closeModal(\'modal-game-library\');openAddGameModal(\'' + g.id + '\')" title="Spiel bearbeiten">✏️ Bearbeiten</button>'
         + '</div>';
     }).join('');
 
-    c.innerHTML = tabs + searchBar + toolbar
+    c.innerHTML = tabs + gameTypeToolbar + searchBar + toolbar
       + '<div class="game-library-grid"><div class="game-library-head"><span>Spiel</span><span>Typ</span><span>Oberkategorie</span><span>Spieler</span><span>Dauer</span><span>Aktiv</span><span></span></div>'
       + rows + '</div>';
 
     if (!filteredGames.length) {
-      c.innerHTML = tabs + searchBar + toolbar + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
+      c.innerHTML = tabs + gameTypeToolbar + searchBar + toolbar + '<div class="empty-state"><div class="icon">🔎</div><p>Keine Spiele gefunden</p></div>';
     }
   }
   openModal('modal-game-library');
@@ -6238,12 +6216,12 @@ function renderCategoryLibrary(c, tabs) {
     const gameRows = games.length
       ? games.map(g => {
           const durLabel = g.minDur && g.minDur !== g.dur ? g.minDur + '-' + g.dur : g.dur;
-          const active = g.enabled === false ? 'deaktiviert' : 'aktiv';
+          const active = isGameActive(g) ? 'aktiv' : 'deaktiviert';
           return '<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:10px;align-items:center;padding:7px 10px;border-radius:7px;background:rgba(255,255,255,.03);margin-top:6px">'
             + '<span style="font-weight:600">' + esc(g.name) + '</span>'
             + '<span class="badge" style="background:rgba(255,255,255,.08);color:var(--text)">' + esc(TYPE_SHORT[g.type] || g.type || '-') + '</span>'
             + '<span style="color:var(--muted);font-size:.78rem">' + esc(durLabel) + 'min</span>'
-            + '<span style="font-size:.72rem;color:' + (g.enabled === false ? 'var(--accent)' : 'var(--green)') + '">' + active + '</span>'
+            + '<span style="font-size:.72rem;color:' + (!isGameActive(g) ? 'var(--accent)' : 'var(--green)') + '">' + active + '</span>'
             + '</div>';
         }).join('')
       : '<div style="padding:10px;color:var(--muted);font-size:.84rem;background:rgba(255,255,255,.03);border-radius:7px">Keine Spiele zugeordnet.</div>';
@@ -6753,20 +6731,22 @@ function openJokerLightbox(jokerId, event) {
 
 function toggleGameEnabled(gameId, enabled) {
   const g = state.games.find(g=>g.id===gameId);
-  if (g) { g.enabled = enabled; saveLS(); }
+  if (g) { setGameActive(g, enabled); saveLS(); updateMarathonConfigPreview(true); }
 }
 
 function toggleAllGames(enabled) {
-  state.games.forEach(g=>g.enabled=enabled);
+  state.games.forEach(g=>setGameActive(g, enabled));
   saveLS();
+  updateMarathonConfigPreview(true);
   openGameLibraryModal(); // re-render
 }
 
 function toggleVisibleGames(enabled) {
   state.games
     .filter(g => gameMatchesLibrarySearch(g, gameLibrarySearchQuery))
-    .forEach(g => g.enabled = enabled);
+    .forEach(g => setGameActive(g, enabled));
   saveLS();
+  updateMarathonConfigPreview(true);
   openGameLibraryModal('games');
 }
 
@@ -8479,7 +8459,6 @@ window.startMarathon = function startMarathon() {
   state._hostResolutionPending = false;
   document.getElementById('modal-host-popup')?.classList.remove('open');
   normalizeHostResolutionState();
-  if (!hasEnabledGameTypes()) { showToast('Mindestens ein Spieltyp muss aktiv sein.'); return; }
   if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
   const compatible = getCompatibleGames();
   if (!compatible.length) { showToast('Keine passenden Spiele für die ausgewählten Spieltypen verfügbar.'); return; }
