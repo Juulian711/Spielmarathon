@@ -2415,13 +2415,20 @@ function configureMarathonTarget() {
 }
 
 function getCompletedGameCount() {
-  return (state.plan || []).filter(entry => entry.done).length;
+  return (state.history || []).filter(entry => entry && !entry.skipped).length;
+}
+
+function getTargetGameCount(source = state) {
+  const mode = normalizeMarathonMode(source?.marathonMode || source?.selectionMode);
+  const target = Math.max(0, parseInt(source?.targetGameCount, 10) || 0);
+  const configured = Math.max(0, parseInt(source?.configuredGameCount, 10) || 0);
+  const planLength = Array.isArray(source?.plan) ? source.plan.length : 0;
+  if (mode === 'marioKart') return target || configured || planLength;
+  return planLength || target || configured;
 }
 
 function getMarathonTargetGameCount() {
-  if (state.targetGameCount > 0) return state.targetGameCount;
-  if (!isMarioKartMode() && state.plan?.length) return state.plan.length;
-  return state.marathonScope === 'gameCount' ? state.configuredGameCount : 0;
+  return getTargetGameCount(state);
 }
 
 function getMarathonRemainingTime() {
@@ -4216,7 +4223,7 @@ function finishMarioKartSelection(gameId) {
 }
 
 function updateProgressBar() {
-  const total = Math.max(0, getMarathonTargetGameCount() || state.plan.length);
+  const total = getTargetGameCount();
   const done = getCompletedGameCount();
   const pct = total > 0 ? Math.min(100, Math.round((done/total)*100)) : 0;
   const half = Math.ceil(total/2);
@@ -4225,7 +4232,7 @@ function updateProgressBar() {
   const bar = document.getElementById('progress-fill-bar');
   const remainingTime = state.marathonScope === 'time' ? getMarathonRemainingTime() : null;
   const timeText = remainingTime === null ? '' : remainingTime < 0 ? ' · ⚠️ Zeitlimit überschritten' : ` · ca. ${Math.ceil(remainingTime)} von ${state.timeLimit} Minuten verbleibend`;
-  if (label) label.textContent = `${done} / ${total} Spiele${done===half&&total>0?' · ⚡ Hälfte!':''}${timeText}`;
+  if (label) label.textContent = `${done} / ${total} Spiele${done>=half&&half>0?' · ⚡ Hälfte erreicht!':''}${timeText}`;
   if (pctEl) pctEl.textContent = `${pct}%`;
   if (bar) bar.style.width = pct+'%';
   // Update next-game button
@@ -4261,7 +4268,7 @@ function updateProgressBar() {
 }
 
 function checkUnderdogAuto() {
-  const total = getMarathonTargetGameCount() || state.plan.length;
+  const total = getTargetGameCount();
   const done = getCompletedGameCount();
   // Halfway = after ceiling(total/2) games for odd numbers
   const half = Math.ceil(total/2);
@@ -4329,7 +4336,7 @@ function renderCurrentGame() {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <span class="badge badge-${g.type}">${TYPE_LABELS[g.type]}</span>
       <span style="font-size:.8rem;color:var(--muted)">${g.dev||''} · ${g.dur}min</span>
-      <span style="margin-left:auto;font-size:.8rem;color:var(--muted)">${state.currentIdx+1}/${state.plan.length}</span>
+      <span style="margin-left:auto;font-size:.8rem;color:var(--muted)">${isMarioKartMode() ? state.plan.length : state.currentIdx+1}/${getTargetGameCount()}</span>
     </div>
     ${g.coverImg ? `<div style="margin-bottom:12px;border-radius:10px;overflow:hidden;max-height:200px;display:flex;align-items:center;justify-content:center;background:#000"><img src="${esc(g.coverImg)}" style="max-width:100%;max-height:200px;width:auto;height:auto;display:block;object-fit:contain" onerror="this.parentElement.style.display='none'"></div>` : ''}
     <h2 style="font-size:1.4rem;font-weight:800;margin-bottom:10px">${esc(g.name)}</h2>
@@ -5107,14 +5114,21 @@ function renderStats() {
 function renderPlanList() {
   const c = document.getElementById('plan-list');
   if (!c) return;
-  if (!state.plan.length && !state.skipped?.length) {
+  const rouletteMode = isMarioKartMode();
+  if (!rouletteMode && !state.plan.length && !state.skipped?.length) {
     c.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>Kein Plan</p></div>'; return;
   }
-  const total = state.plan.length;
-  const done = state.plan.filter(e=>e.done).length;
-  const pct = total > 0 ? Math.round((done/total)*100) : 0;
+  const total = getTargetGameCount();
+  const done = getCompletedGameCount();
+  const selected = state.plan.length;
+  const pct = total > 0 ? Math.min(100, Math.round((done/total)*100)) : 0;
   const half = Math.ceil(total/2);
-  const halfNote = (done===half&&total>0) ? ' · <span style="color:var(--gold)">⚡ Hälfte!</span>' : '';
+  const halfNote = (done>=half&&half>0) ? ' · <span style="color:var(--gold)">⚡ Hälfte erreicht!</span>' : '';
+  const rouletteInfo = rouletteMode ? `
+    <div style="margin-bottom:12px;background:rgba(255,215,0,.07);border:1px solid rgba(255,215,0,.22);border-radius:10px;padding:12px 14px">
+      <div style="font-weight:850;color:var(--gold);margin-bottom:7px">Spielwahl-Roulette: Der Spielplan entsteht Runde für Runde.</div>
+      <div style="font-size:.78rem;color:var(--muted);line-height:1.65">Geplant: <strong style="color:var(--text)">${total} ${total===1?'Spiel':'Spiele'}</strong><br>Bisher ausgewählt: <strong style="color:var(--text)">${selected} ${selected===1?'Spiel':'Spiele'}</strong><br>Abgeschlossen: <strong style="color:var(--text)">${done} / ${total} Spiele</strong></div>
+    </div>` : '';
   const progressHtml = `
     <div style="margin-bottom:12px;background:var(--surface);border-radius:10px;padding:12px 14px">
       <div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted);margin-bottom:6px">
@@ -5139,6 +5153,15 @@ function renderPlanList() {
       '<span style="font-size:.78rem;color:var(--muted)">' + (g.minDur&&g.minDur!==g.dur?g.minDur+'-'+g.dur:g.dur) + 'm</span>' +
       '</div>';
   }).join('');
+  const placeholderCount = rouletteMode ? Math.max(0, total - selected) : 0;
+  const placeholdersHtml = Array.from({length:placeholderCount}, (_, offset) => {
+    const number = selected + offset + 1;
+    return '<div class="game-item" style="opacity:.55;border-style:dashed">' +
+      '<div class="game-cover">?</div>' +
+      '<div><div class="game-name">' + number + '. Noch nicht ausgewählt</div>' +
+      '<div class="game-meta">Wird später per Spielwahl-Roulette bestimmt</div></div>' +
+      '</div>';
+  }).join('');
 
   const skippedItems = (state.skipped||[]).map(s =>
     '<div class="game-item" style="opacity:.4;text-decoration:line-through">' +
@@ -5153,7 +5176,7 @@ function renderPlanList() {
       ${skippedItems}
     </div>` : '';
 
-  c.innerHTML = progressHtml + planHtml + skippedHtml;
+  c.innerHTML = rouletteInfo + progressHtml + planHtml + placeholdersHtml + skippedHtml;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5180,9 +5203,9 @@ function finishTournamentAndReturnHome(snapshot, name) {
     marathonMode: normalizeMarathonMode(snapshot.marathonMode),
     marathonScope: normalizeMarathonScope(snapshot.marathonScope),
     configuredGameCount: snapshot.configuredGameCount || 0,
-    targetGameCount: snapshot.targetGameCount || snapshot.plan?.length || 0,
-    completedGameCount: snapshot.history?.length || 0,
-    actualGameCount: snapshot.history?.length || 0,
+    targetGameCount: getTargetGameCount(snapshot),
+    completedGameCount: (snapshot.history || []).filter(entry => entry && !entry.skipped).length,
+    actualGameCount: (snapshot.history || []).filter(entry => entry && !entry.skipped).length,
     settings: snapshot.settings || {eventsEnabled:true, secretGoalsEnabled:true},
     timeLimit: snapshot.timeLimit || 0};
 
@@ -5360,7 +5383,7 @@ function loadSession(id) {
   if (!canUseRevengeJoker(state)) state.postGameWindow = false;
   normalizeGameCategories();
   if (!state.targetGameCount) state.targetGameCount = isMarioKartMode()
-    ? calculateRouletteTargetGameCount(state.timeLimit)
+    ? (state.marathonScope === 'gameCount' ? state.configuredGameCount : calculateRouletteTargetGameCount(state.timeLimit))
     : (state.plan.length || (state.marathonScope === 'gameCount' ? state.configuredGameCount : 0));
   syncMarathonModeInput();
   if (state._setupPhase === 'jokerPick' && !state._marathonStarted) {
@@ -5526,7 +5549,7 @@ function openTournamentDetail(id) {
   const scopeLabel = getMarathonScopeLabel(t.marathonScope || 'time');
   const scopeMeta = normalizeMarathonScope(t.marathonScope || 'time') === 'time'
     ? `${t.timeLimit || '?'} Minuten · ${t.targetGameCount || (t.history||[]).length} Spiele geplant`
-    : `${t.configuredGameCount || t.targetGameCount || (t.history||[]).length} Spiele geplant`;
+    : `${t.targetGameCount || t.configuredGameCount || (t.history||[]).length} Spiele geplant`;
   const histHtml = (t.history||[]).map((h,i) => {
     const tags = [];
     if (h.vetoed) tags.push('<span style="font-size:.68rem;background:rgba(233,69,96,.2);color:var(--accent);padding:1px 6px;border-radius:4px">🗳️ Veto</span>');
@@ -6932,9 +6955,9 @@ function toggleVisibleGames(enabled) {
 
 // ── Veto auto-trigger one game before end ─────────────────
 function checkVetoAutoTrigger() {
-  const total = state.plan.length;
-  const done = state.plan.filter(e=>e.done).length;
-  const remaining = state.plan.filter(e=>!e.done).length;
+  const total = getTargetGameCount();
+  const done = getCompletedGameCount();
+  const remaining = Math.max(0, total - done);
   if (remaining !== 1) return; // Only trigger when exactly 1 game remains
   const vetoPlayers = state.players.filter(p =>
     (state.jokers[p.name]||[]).find(j=>j.id==='veto'&&!j.used)
@@ -7475,8 +7498,8 @@ function nextGameAfterEvent() {
 // ═══════════════════════════════════════════════════════════
 function checkComeback() {
   // Only give one gifted joker ever, only after the halfway point
-  const total = state.plan.length;
-  const done = state.history.length;
+  const total = getTargetGameCount();
+  const done = getCompletedGameCount();
   const half = Math.ceil(total/2);
   if (done < half) return;
   if (state.comebackGiven?.jokerGiven) return;
@@ -7552,7 +7575,7 @@ const SECRET_GOALS = [
   {id:'sg_riese', icon:'👑', text:'Liege nach genau der Hälfte aller Spiele auf Platz 1 der Gesamtwertung',
     reward:3, endOnly:false,
     check:(h,n,scores,prev,hist,jokers,plan)=>{
-      const total = plan ? plan.length : 0;
+      const total = getTargetGameCount();
       if(total<2) return false;
       const half = Math.ceil(total/2);
       if(hist.length !== half) return false;
@@ -7804,7 +7827,7 @@ function assignSecretGoals() {
   const available = SECRET_GOALS.filter(g=>{
     if(g.id==='sg_silber' && ffaCount<3) return false; // need at least 3 FFA
     if(g.id==='sg_koop' && coopCount===0) return false; // need at least 1 coop
-    if(g.id==='sg_riese' && state.plan.length<4) return false; // need enough games
+    if(g.id==='sg_riese' && getTargetGameCount()<4) return false; // need enough games
     return true;
   });
 
@@ -9842,7 +9865,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const available = SECRET_GOALS.filter(g => {
       if (g.id === 'sg_silber' && ffaCount < 3) return false;
       if (g.id === 'sg_koop' && coopCount === 0) return false;
-      if (g.id === 'sg_riese' && state.plan.length < 4) return false;
+      if (g.id === 'sg_riese' && getTargetGameCount() < 4) return false;
       return true;
     });
 
@@ -9981,7 +10004,7 @@ document.addEventListener('sm-mobile-local-refresh', e => {
     const available = SECRET_GOALS.filter(g => {
       if (g.id === 'sg_silber' && ffaCount < 3) return false;
       if (g.id === 'sg_koop' && coopCount === 0) return false;
-      if (g.id === 'sg_riese' && state.plan.length < 4) return false;
+      if (g.id === 'sg_riese' && getTargetGameCount() < 4) return false;
       return true;
     });
 
