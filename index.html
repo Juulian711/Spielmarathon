@@ -588,6 +588,15 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
           <input type="number" id="configured-game-count" value="5" min="1" max="100" oninput="updateMarathonConfigPreview()"/>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">Die Spieldauer wird in diesem Modus nicht berücksichtigt.</div>
         </div>
+        <div class="form-group" style="margin-top:14px">
+          <label style="font-weight:800;color:var(--text);margin-bottom:8px">Spieltypen für diesen Marathon</label>
+          <div id="marathon-game-type-options" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px">
+            <label class="chip active" style="justify-content:center;margin:0;cursor:pointer"><input type="checkbox" data-marathon-game-type="ffa" checked onchange="toggleMarathonGameType('ffa',this.checked)" style="margin-right:6px">Jeder gegen Jeden</label>
+            <label class="chip active" style="justify-content:center;margin:0;cursor:pointer"><input type="checkbox" data-marathon-game-type="2v2" checked onchange="toggleMarathonGameType('2v2',this.checked)" style="margin-right:6px">Team gegen Team</label>
+            <label class="chip active" style="justify-content:center;margin:0;cursor:pointer"><input type="checkbox" data-marathon-game-type="3v1" checked onchange="toggleMarathonGameType('3v1',this.checked)" style="margin-right:6px">1 gegen Alle</label>
+            <label class="chip active" style="justify-content:center;margin:0;cursor:pointer"><input type="checkbox" data-marathon-game-type="coop" checked onchange="toggleMarathonGameType('coop',this.checked)" style="margin-right:6px">Kooperativ</label>
+          </div>
+        </div>
         <div id="marathon-config-preview" style="background:rgba(78,205,196,.08);border:1px solid rgba(78,205,196,.25);border-radius:9px;padding:9px 11px;font-size:.78rem;color:var(--green);font-weight:800"></div>
       </div>
 
@@ -1473,6 +1482,7 @@ let state = {
   players:[],
   games:[],
   gameCategories:[],
+  enabledGameTypes:{ffa:true,'2v2':true,'3v1':true,coop:true},
   plan:[],
   currentIdx:-1,
   scores:{},
@@ -1856,6 +1866,7 @@ function buildSessionSnapshot(name, finalize=false) {
     date: new Date().toISOString(),
     finalized: finalize,
     settings: {...ensureFeatureSettings()},
+    enabledGameTypes: normalizeEnabledGameTypes(state.enabledGameTypes),
     players: state.players,
     scores: state.scores,
     history: state.history,
@@ -2326,8 +2337,57 @@ function getCompatibleGames() {
   const n = state.players.length;
   return state.games.filter(g => {
     if (g.enabled === false) return false; // excluded from marathon
+    if (!isGameTypeEnabled(g)) return false;
     return g.minP <= n && g.maxP >= n;
   });
+}
+
+const DEFAULT_ENABLED_GAME_TYPES = Object.freeze({ffa:true,'2v2':true,'3v1':true,coop:true});
+
+function normalizeEnabledGameTypes(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  return Object.fromEntries(Object.keys(DEFAULT_ENABLED_GAME_TYPES).map(type => [type, source[type] !== false]));
+}
+
+function isGameTypeEnabled(game) {
+  state.enabledGameTypes = normalizeEnabledGameTypes(state.enabledGameTypes);
+  return state.enabledGameTypes[game?.type || 'ffa'] !== false;
+}
+
+function getEnabledGameTypeLabels(value = state.enabledGameTypes) {
+  const enabled = normalizeEnabledGameTypes(value);
+  const labels = {ffa:'Jeder gegen Jeden','2v2':'Team gegen Team','3v1':'1 gegen Alle',coop:'Kooperativ'};
+  return Object.keys(labels).filter(type => enabled[type]).map(type => labels[type]);
+}
+
+function hasEnabledGameTypes() {
+  return Object.values(normalizeEnabledGameTypes(state.enabledGameTypes)).some(Boolean);
+}
+
+function syncEnabledGameTypeInputs() {
+  state.enabledGameTypes = normalizeEnabledGameTypes(state.enabledGameTypes);
+  document.querySelectorAll('[data-marathon-game-type]').forEach(input => {
+    input.checked = state.enabledGameTypes[input.dataset.marathonGameType] !== false;
+    input.closest('label')?.classList.toggle('active', input.checked);
+  });
+}
+
+function toggleMarathonGameType(type, enabled) {
+  state.enabledGameTypes = normalizeEnabledGameTypes(state.enabledGameTypes);
+  const next = {...state.enabledGameTypes, [type]:!!enabled};
+  if (!Object.values(next).some(Boolean)) {
+    showToast('Mindestens ein Spieltyp muss aktiv sein.');
+    syncEnabledGameTypeInputs();
+    return false;
+  }
+  const hadPlanPreview = state.previewOrder.length > 0;
+  state.enabledGameTypes = next;
+  state.previewOrder = [];
+  syncEnabledGameTypeInputs();
+  updateMarathonConfigPreview(true);
+  saveLS();
+  if (hadPlanPreview) generateAndShowPlan();
+  return true;
 }
 
 function getAvgDur(g) {
@@ -2504,15 +2564,19 @@ function renderGameListSetup() {
 }
 
 function generateAndShowPlan() {
+  if (!hasEnabledGameTypes()) {
+    showToast('Mindestens ein Spieltyp muss aktiv sein.');
+    return;
+  }
   state.marathonMode = getSelectedMarathonMode();
   readMarathonScopeConfigFromUI();
   configureMarathonTarget();
   const n = state.players.length;
   const compatible = n > 0
-    ? state.games.filter(g => g.enabled !== false && g.minP <= n && g.maxP >= n)
-    : state.games.filter(g => g.enabled !== false);
+    ? getCompatibleGames()
+    : state.games.filter(g => g.enabled !== false && isGameTypeEnabled(g));
   if (!compatible.length) {
-    showToast(n > 0 ? 'Keine aktivierten Spiele für diese Spielerzahl!' : 'Keine aktivierten Spiele in der Bibliothek!');
+    showToast('Keine passenden Spiele für die ausgewählten Spieltypen verfügbar.');
     return;
   }
   const c = document.getElementById('plan-preview-list');
@@ -2869,9 +2933,10 @@ function startMarathon() {
   state._hostResolutionPending = false;
   document.getElementById('modal-host-popup')?.classList.remove('open');
   normalizeHostResolutionState();
+  if (!hasEnabledGameTypes()) { showToast('Mindestens ein Spieltyp muss aktiv sein.'); return; }
   if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
   const compatible = getCompatibleGames();
-  if (!compatible.length) { showToast('Keine kompatiblen Spiele für diese Spielerzahl!'); return; }
+  if (!compatible.length) { showToast('Keine passenden Spiele für die ausgewählten Spieltypen verfügbar.'); return; }
 
   if (typeof fbDisconnect === 'function' && typeof fbSessionId !== 'undefined' && fbSessionId) {
     try { fbDisconnect(); } catch(e) { console.warn('Could not close old Firebase session:', e); }
@@ -3051,7 +3116,7 @@ function buildPlan() {
     pool = state.previewOrder
       .map(id => state.games.find(g => g.id === id))
       .filter(Boolean)
-      .filter(g => g.enabled !== false); // respect enabled flag
+      .filter(g => g.enabled !== false && isGameTypeEnabled(g)); // respect enabled and type filters
     // Filter for player count compatibility
     const n = state.players.length;
     pool = pool.filter(g => g.minP <= n && g.maxP >= n);
@@ -3211,7 +3276,7 @@ function startGameVoteRound() {
   }
   const options = buildMarioKartVoteOptions();
   if (!options.length) {
-    showToast('Es sind keine weiteren passenden Spiele verfügbar.');
+    showToast('Keine passenden Spiele für die ausgewählten Spieltypen verfügbar.');
     showEndScreen();
     return;
   }
@@ -4418,12 +4483,6 @@ function submitResult(type) {
   // in die Queue gelangen. Bestätigen führt keinerlei Punkteberechnung aus.
   if (tipsterResult) showTipsterResolution({...tipsterResult, popupId:`tipster-resolution-${completedHistoryId}-${tipsterResult.playerName}`});
   if (doubleResults.length) showDoubleResults(doubleResults);
-  Object.entries(specialW).forEach(([name,count]) => queueHostPopup({
-    id:`special-resolution-${completedHistoryId}-${name}`, icon:'⭐', title:'Sonderbonus',
-    playerName:name, variant:'success', resolution:true,
-    message:`${name} hat ${count > 1 ? `${count} Sonderregeln` : 'die Sonderregel'} erfüllt.`,
-    points:`+${count * pts.special} Punkte`
-  }));
   checkSecretGoalsLive();
   checkComeback();
   checkUnderdogAuto();
@@ -4994,6 +5053,7 @@ function finishTournamentAndReturnHome(snapshot, name) {
     history: snapshot.history, skipped: snapshot.skipped || [], games: snapshot.games,
     plan: snapshot.plan || [],
     gameCategories: snapshot.gameCategories || [],
+    enabledGameTypes: normalizeEnabledGameTypes(snapshot.enabledGameTypes),
     marathonMode: normalizeMarathonMode(snapshot.marathonMode),
     marathonScope: normalizeMarathonScope(snapshot.marathonScope),
     configuredGameCount: snapshot.configuredGameCount || 0,
@@ -5100,6 +5160,7 @@ function loadSession(id) {
     eventsEnabled: s.settings?.eventsEnabled !== false,
     secretGoalsEnabled: s.settings?.secretGoalsEnabled !== false
   };
+  state.enabledGameTypes = normalizeEnabledGameTypes(s.enabledGameTypes);
   state.players    = s.players || [];
   state.scores     = s.scores  || {};
   state.history    = s.history || [];
@@ -5343,6 +5404,7 @@ function openTournamentDetail(id) {
   const scopeMeta = normalizeMarathonScope(t.marathonScope || 'time') === 'time'
     ? `${t.timeLimit || '?'} Minuten · ${t.targetGameCount || (t.history||[]).length} Spiele geplant`
     : `${t.configuredGameCount || t.targetGameCount || (t.history||[]).length} Spiele geplant`;
+  const gameTypeMeta = getEnabledGameTypeLabels(t.enabledGameTypes).join(', ');
   const histHtml = (t.history||[]).map((h,i) => {
     const tags = [];
     if (h.vetoed) tags.push('<span style="font-size:.68rem;background:rgba(233,69,96,.2);color:var(--accent);padding:1px 6px;border-radius:4px">🗳️ Veto</span>');
@@ -5375,7 +5437,7 @@ function openTournamentDetail(id) {
           </div>`).join('')}
       </div>
       <div style="margin-top:12px;font-size:.78rem;color:var(--muted)">
-        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.completedGameCount ?? t.actualGameCount ?? (t.history||[]).length)} tatsächlich gespielt · 🧭 ${esc(modeLabel)} · ${esc(scopeLabel)} · ${esc(scopeMeta)}
+        📅 ${new Date(t.date).toLocaleString('de-DE')} · 🎮 ${(t.completedGameCount ?? t.actualGameCount ?? (t.history||[]).length)} tatsächlich gespielt · 🧭 ${esc(modeLabel)} · ${esc(scopeLabel)} · ${esc(scopeMeta)}<br>Spieltypen: ${esc(gameTypeMeta)}
       </div>
     </div>
     <div class="card">
@@ -5693,7 +5755,8 @@ function saveLS() {
       marathonMode:normalizeMarathonMode(state.marathonMode),
       marathonScope:normalizeMarathonScope(state.marathonScope),
       timeLimit:state.timeLimit,
-      configuredGameCount:state.configuredGameCount
+      configuredGameCount:state.configuredGameCount,
+      enabledGameTypes:normalizeEnabledGameTypes(state.enabledGameTypes)
     }));
     return true;
   } catch (error) {
@@ -5707,6 +5770,7 @@ function saveCurrentToLS() {
   sessions['__autosave__'] = {
     id:'__autosave__', name:'Autosave', date:new Date().toISOString(),
     settings:{...ensureFeatureSettings()},
+    enabledGameTypes:normalizeEnabledGameTypes(state.enabledGameTypes),
     finalized:false, players:state.players, scores:state.scores,
     history:state.history, plan:state.plan, currentIdx:state.currentIdx,
     jokers:state.jokers, jokerUses:state.jokerUses || {}, marathonScope:normalizeMarathonScope(state.marathonScope), timeLimit:state.timeLimit, configuredGameCount:state.configuredGameCount, targetGameCount:state.targetGameCount, marathonMode:normalizeMarathonMode(state.marathonMode), startTime:state.startTime,
@@ -5770,6 +5834,7 @@ function loadLS() {
       state.marathonScope = normalizeMarathonScope(preferences.marathonScope);
       state.timeLimit = Math.max(1, parseInt(preferences.timeLimit, 10) || 120);
       state.configuredGameCount = Math.max(1, parseInt(preferences.configuredGameCount, 10) || 5);
+      state.enabledGameTypes = normalizeEnabledGameTypes(preferences.enabledGameTypes);
     }
     ensureFeatureSettings();
     normalizeGameCategories();
@@ -5983,6 +6048,7 @@ function getSelectedMarathonMode() {
 function syncMarathonModeInput() {
   const sel = document.getElementById('marathon-mode');
   if (sel) sel.value = normalizeMarathonMode(state.marathonMode);
+  syncEnabledGameTypeInputs();
   syncMarathonScopeInputs();
 }
 
@@ -8413,9 +8479,10 @@ window.startMarathon = function startMarathon() {
   state._hostResolutionPending = false;
   document.getElementById('modal-host-popup')?.classList.remove('open');
   normalizeHostResolutionState();
+  if (!hasEnabledGameTypes()) { showToast('Mindestens ein Spieltyp muss aktiv sein.'); return; }
   if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
   const compatible = getCompatibleGames();
-  if (!compatible.length) { showToast('Keine kompatiblen Spiele für diese Spielerzahl!'); return; }
+  if (!compatible.length) { showToast('Keine passenden Spiele für die ausgewählten Spieltypen verfügbar.'); return; }
 
   // Wichtig: Jeder neue Marathon bekommt eine frische Host-/QR-Session.
   if (typeof fbDisconnect === 'function' && typeof fbSessionId !== 'undefined' && fbSessionId) {
