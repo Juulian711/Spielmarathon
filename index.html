@@ -911,6 +911,26 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 </div>
 </div>
 
+<!-- Manual game swap -->
+<div class="modal-overlay" id="modal-manual-game-swap">
+<div class="modal" style="max-width:760px">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+    <div><h3 style="margin:0">🔁 Spiel austauschen</h3><p id="manual-game-swap-current" style="font-size:.78rem;color:var(--muted);margin-top:4px"></p></div>
+    <button class="btn btn-ghost btn-sm" onclick="closeManualGameSwap()">✕</button>
+  </div>
+  <div class="form-group">
+    <label for="manual-game-swap-search">Spielebibliothek durchsuchen</label>
+    <input type="text" id="manual-game-swap-search" placeholder="Name, Verlag, Oberkategorie oder Typ" oninput="updateManualGameSwapSearch(this.value)"/>
+  </div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted);margin-bottom:12px;cursor:pointer">
+    <input type="checkbox" id="manual-game-swap-show-all" onchange="toggleManualGameSwapShowAll(this.checked)"/>
+    Auch deaktivierte oder zur Spielerzahl unpassende Spiele anzeigen
+  </label>
+  <div id="manual-game-swap-list" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto"></div>
+  <div class="modal-actions"><button class="btn btn-ghost" onclick="closeManualGameSwap()">Abbrechen</button></div>
+</div>
+</div>
+
 <!-- Save Session -->
 <div class="modal-overlay" id="modal-save">
 <div class="modal">
@@ -1493,6 +1513,7 @@ let state = {
   currentGameInstanceId:null,
   activeDoubleOrNothing:{},
   _processedDoubleActions:{},
+  manualGameSwaps:[],
   goalAchieved:{},
   previewOrder:[],
   currentVoteOptions:[],
@@ -1774,6 +1795,7 @@ function resetMarathonRuntime(options = {}) {
   state.currentGameInstanceId = null;
   state.activeDoubleOrNothing = {};
   state._processedDoubleActions = {};
+  state.manualGameSwaps = [];
   state.hostResolutionPending = false;
   state.hostPopupBacklog = [];
   state._processedHostPopupIds = {};
@@ -1878,6 +1900,7 @@ function buildSessionSnapshot(name, finalize=false) {
     currentGameInstanceId: state.currentGameInstanceId || null,
     activeDoubleOrNothing: state.activeDoubleOrNothing || {},
     processedDoubleActions: state._processedDoubleActions || {},
+    manualGameSwaps: state.manualGameSwaps || [],
     goalAchieved: state.goalAchieved || {},
     activeJokers: state.activeJokers || {},
     currentVoteOptions: state.currentVoteOptions || [],
@@ -3640,6 +3663,159 @@ function enterPreGamePhase(entry = getCurrentGameEntry()) {
   return true;
 }
 
+let manualGameSwapTargetIndex = null;
+let manualGameSwapQuery = '';
+let manualGameSwapShowAll = false;
+
+function canManuallySwapGame(index = state.currentIdx) {
+  const entry = state.plan?.[index];
+  return !!(
+    Number.isInteger(index) &&
+    index === state.currentIdx &&
+    entry && !entry.done &&
+    state.preGameWindow === true &&
+    state.currentGameStarted !== true &&
+    state.gamePhase === 'preGame' &&
+    !state.currentVoteRoundId && !state.currentVoteId &&
+    !state._gameVoteAnimating &&
+    !state.pendingTipster &&
+    !Object.keys(state.activeDoubleOrNothing || {}).length &&
+    !Object.keys(state.activeJokers || {}).length
+  );
+}
+
+function openManualGameSwap(index = state.currentIdx) {
+  if (!canManuallySwapGame(index)) {
+    showToast('Das Spiel kann nur vor dem offiziellen Spielstart ausgetauscht werden.');
+    return;
+  }
+  manualGameSwapTargetIndex = index;
+  manualGameSwapQuery = '';
+  manualGameSwapShowAll = false;
+  const input = document.getElementById('manual-game-swap-search');
+  const showAll = document.getElementById('manual-game-swap-show-all');
+  if (input) input.value = '';
+  if (showAll) showAll.checked = false;
+  renderManualGameSwapList();
+  openModal('modal-manual-game-swap');
+  setTimeout(() => document.getElementById('manual-game-swap-search')?.focus(), 0);
+}
+
+function closeManualGameSwap() {
+  closeModal('modal-manual-game-swap');
+  manualGameSwapTargetIndex = null;
+  manualGameSwapQuery = '';
+  manualGameSwapShowAll = false;
+}
+
+function updateManualGameSwapSearch(value) {
+  manualGameSwapQuery = value || '';
+  renderManualGameSwapList();
+}
+
+function toggleManualGameSwapShowAll(checked) {
+  manualGameSwapShowAll = !!checked;
+  renderManualGameSwapList();
+}
+
+function renderManualGameSwapList() {
+  const container = document.getElementById('manual-game-swap-list');
+  const entry = state.plan?.[manualGameSwapTargetIndex];
+  const oldGame = entry ? state.games.find(game => game.id === entry.gameId) : null;
+  if (!container || !entry || !oldGame) return;
+  const currentLabel = document.getElementById('manual-game-swap-current');
+  if (currentLabel) currentLabel.textContent = `Aktuell: ${oldGame.name}`;
+  const playerCount = state.players.length;
+  const usedElsewhere = new Set(state.plan.filter((_, index) => index !== manualGameSwapTargetIndex).map(item => item.gameId));
+  const games = state.games
+    .filter(game => game.id !== oldGame.id)
+    .filter(game => gameMatchesLibrarySearch(game, manualGameSwapQuery))
+    .filter(game => manualGameSwapShowAll || (isGameActive(game) && game.minP <= playerCount && game.maxP >= playerCount && !usedElsewhere.has(game.id)))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+  if (!games.length) {
+    container.innerHTML = '<div class="empty-state" style="padding:18px"><div class="icon">🔎</div><p>Keine passenden Spiele gefunden.</p></div>';
+    return;
+  }
+  container.innerHTML = games.map(game => {
+    const active = isGameActive(game);
+    const playerCompatible = game.minP <= playerCount && game.maxP >= playerCount;
+    const alreadyPlanned = usedElsewhere.has(game.id);
+    const unavailable = alreadyPlanned;
+    const warnings = [
+      !active ? '<span style="color:var(--accent)">deaktiviert</span>' : '',
+      !playerCompatible ? '<span style="color:var(--gold)">Spielerzahl passt nicht</span>' : '',
+      alreadyPlanned ? '<span style="color:var(--accent)">bereits im Plan</span>' : ''
+    ].filter(Boolean).join(' · ');
+    const category = getCategoryName(getGameCategoryId(game)) || 'Ohne Oberkategorie';
+    const cover = game.coverImg
+      ? `<img src="${esc(game.coverImg)}" alt="" style="width:54px;height:54px;border-radius:8px;object-fit:cover" onerror="this.style.display='none'">`
+      : '<div style="width:54px;height:54px;border-radius:8px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:1.7rem">🎲</div>';
+    return `<div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:11px;align-items:center;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;${unavailable?'opacity:.55':''}">
+      ${cover}
+      <div><div style="font-weight:850">${esc(game.name)}</div><div style="font-size:.74rem;color:var(--muted);margin-top:3px">${esc(game.dev || 'Kein Verlag')} · ${esc(TYPE_LABELS[game.type] || game.type)} · 👥 ${game.minP}–${game.maxP} · ⏱ ${game.dur || '?'} min</div><div style="font-size:.7rem;color:var(--muted);margin-top:3px">📁 ${esc(category)}${warnings ? ` · ${warnings}` : ''}</div></div>
+      <button class="btn btn-primary btn-sm" onclick="confirmManualGameSwap('${game.id}')" ${unavailable?'disabled':''}>Dieses Spiel einsetzen</button>
+    </div>`;
+  }).join('');
+}
+
+function confirmManualGameSwap(newGameId) {
+  if (!canManuallySwapGame(manualGameSwapTargetIndex)) {
+    closeManualGameSwap();
+    showToast('Der Austausch ist nicht mehr möglich, weil das Spiel bereits gestartet wurde.');
+    return;
+  }
+  const entry = state.plan[manualGameSwapTargetIndex];
+  const oldGame = state.games.find(game => game.id === entry.gameId);
+  const newGame = state.games.find(game => game.id === newGameId);
+  if (!oldGame || !newGame || oldGame.id === newGame.id) return;
+  if (state.plan.some((item, index) => index !== manualGameSwapTargetIndex && item.gameId === newGame.id)) {
+    showToast('Dieses Spiel ist bereits im Marathon-Plan enthalten.');
+    return;
+  }
+  showConfirm(
+    `${oldGame.name} durch ${newGame.name} ersetzen?`,
+    `${oldGame.name} kommt wieder in den Pool möglicher Spiele. ${newGame.name} ist danach das aktuelle Spiel.`,
+    () => performManualGameSwap(manualGameSwapTargetIndex, newGame.id),
+    'Spiel austauschen'
+  );
+}
+
+function performManualGameSwap(index, newGameId) {
+  if (!canManuallySwapGame(index)) {
+    showToast('Der Austausch ist nicht mehr möglich.');
+    return false;
+  }
+  const entry = state.plan[index];
+  const oldGame = state.games.find(game => game.id === entry.gameId);
+  const newGame = state.games.find(game => game.id === newGameId);
+  if (!oldGame || !newGame || oldGame.id === newGame.id) return false;
+  if (state.plan.some((item, itemIndex) => itemIndex !== index && item.gameId === newGame.id)) return false;
+
+  const swappedAt = Date.now();
+  state.manualGameSwaps ||= [];
+  state.manualGameSwaps.push({
+    at:swappedAt, index, oldGameId:oldGame.id, oldGameName:oldGame.name,
+    newGameId:newGame.id, newGameName:newGame.name, reason:'manual'
+  });
+  entry.gameId = newGame.id;
+  entry.rule = pickRandom(newGame.rules || ['Sonderaufgabe']);
+  entry.teams = generateTeams(newGame.type);
+  entry.gameInstanceId = uid();
+  entry.manualSwap = {at:swappedAt, oldGameId:oldGame.id, oldGameName:oldGame.name};
+  state.currentGameInstanceId = entry.gameInstanceId;
+  resultSel = {ffa:{}, '2v2':null, '3v1':null, coop:null};
+  closeManualGameSwap();
+  renderCurrentGame();
+  renderPlanList();
+  updateStarterInfo();
+  updateProgressBar();
+  saveCurrentToLS();
+  if (typeof fbIsHost !== 'undefined' && fbIsHost && typeof fbPushState === 'function') fbPushState();
+  showToast(`Spiel wurde ausgetauscht: ${newGame.name} ist jetzt dran.`);
+  return true;
+}
+
 function canUseDoubleOrNothingJoker(playerName, source = state) {
   const entry = getCurrentGameEntry(source);
   const phase = source === state ? state._setupPhase : source?.phase;
@@ -4157,11 +4333,13 @@ function renderCurrentGame() {
     </div>
     ${g.coverImg ? `<div style="margin-bottom:12px;border-radius:10px;overflow:hidden;max-height:200px;display:flex;align-items:center;justify-content:center;background:#000"><img src="${esc(g.coverImg)}" style="max-width:100%;max-height:200px;width:auto;height:auto;display:block;object-fit:contain" onerror="this.parentElement.style.display='none'"></div>` : ''}
     <h2 style="font-size:1.4rem;font-weight:800;margin-bottom:10px">${esc(g.name)}</h2>
+    ${entry.manualSwap ? `<div style="font-size:.75rem;color:var(--gold);margin:-4px 0 10px">🔁 Manuell ausgetauscht · ersetzt: ${esc(entry.manualSwap.oldGameName)} → ${esc(g.name)}</div>` : ''}
     ${teamsHtml}
     <div class="rule-banner">
       <div class="rule-banner-title">⭐ Sonderregel – wer es schafft bekommt +${pts.special} Punkt(e)</div>
       <div style="font-weight:600;font-size:.92rem">${esc(entry.rule)}</div>
     </div>
+    ${canManuallySwapGame(state.currentIdx) ? `<button class="btn btn-secondary" style="width:100%;margin-top:12px" onclick="openManualGameSwap(${state.currentIdx})">⚙️ / 🔁 Spiel austauschen</button>` : ''}
     ${state.preGameWindow && !state.currentGameStarted ? `<button class="btn btn-green" id="btn-start-current-game" style="width:100%;padding:14px;font-size:1.05rem;margin-top:12px" onclick="startCurrentGame()" ${startBlocked?'disabled':''}>${startBlocked?'⏳ Warte auf ausstehende Handyaktion':'▶️ Spiel starten'}</button>` : ''}
   `;
   updateProgressBar();
@@ -5152,6 +5330,7 @@ function loadSession(id) {
   state.currentGameInstanceId = s.currentGameInstanceId || loadedEntry?.gameInstanceId || null;
   state.activeDoubleOrNothing = s.activeDoubleOrNothing || {};
   state._processedDoubleActions = s.processedDoubleActions || {};
+  state.manualGameSwaps = Array.isArray(s.manualGameSwaps) ? s.manualGameSwaps : [];
   if (loadedEntry && !loadedEntry.done && state.currentGameInstanceId) {
     Object.entries(state.activeJokers || {}).forEach(([playerName, jokerId]) => {
       if (jokerId === 'double' && !state.activeDoubleOrNothing[playerName]) {
@@ -5730,6 +5909,7 @@ function saveCurrentToLS() {
     currentGameInstanceId:state.currentGameInstanceId || null,
     activeDoubleOrNothing:state.activeDoubleOrNothing || {},
     processedDoubleActions:state._processedDoubleActions || {},
+    manualGameSwaps:state.manualGameSwaps || [],
     hostResolutionPending:!!state.hostResolutionPending,
     hostPopupBacklog:Array.isArray(state.hostPopupBacklog) ? state.hostPopupBacklog : [],
     processedHostPopupIds:state._processedHostPopupIds || {},
@@ -8505,6 +8685,7 @@ window.startMarathon = function startMarathon() {
   state.currentGameInstanceId = null;
   state.activeDoubleOrNothing = {};
   state._processedDoubleActions = {};
+  state.manualGameSwaps = [];
   state.currentIdx = -1;
   state.jokerPicks = {};
 
