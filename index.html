@@ -6,6 +6,7 @@
 <title>🎲 Spielmarathon</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -39,6 +40,13 @@ body.light-mode .joker-card{box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .settings-tab.active{background:var(--accent);color:#fff}
 .settings-tab:hover:not(.active){background:rgba(255,255,255,.08);color:var(--text)}
 .settings-panel{display:none}.settings-panel.active{display:block}
+.device-transfer-section{background:var(--surface);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;margin-bottom:14px}
+.device-transfer-code{font-size:clamp(1.35rem,5vw,2rem);font-weight:950;letter-spacing:.12em;text-align:center;color:var(--gold);padding:14px;background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.25);border-radius:10px;margin:12px 0;overflow-wrap:anywhere}
+.device-transfer-progress{height:8px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-top:10px}
+.device-transfer-progress>span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--gold));transition:width .2s}
+.device-transfer-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:7px;margin:10px 0}
+.device-transfer-summary>div{background:rgba(255,255,255,.045);border-radius:8px;padding:8px;text-align:center;font-size:.72rem;color:var(--muted)}
+.device-transfer-summary strong{display:block;color:var(--text);font-size:1rem;margin-bottom:2px}
 
 /* THEME TOGGLE in settings */
 .theme-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface);border-radius:8px;margin-bottom:12px}
@@ -1229,7 +1237,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
 
 <!-- Unified Settings Modal -->
 <div class="modal-overlay" id="modal-settings">
-<div class="modal" style="max-width:620px">
+<div class="modal" style="max-width:720px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <h3 style="margin:0">⚙️ Einstellungen</h3>
     <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-settings')">✕</button>
@@ -1240,6 +1248,7 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
     <button class="settings-tab" onclick="switchSettingsTab('s-ziele')">🎯 Geheimziele</button>
     <button class="settings-tab" onclick="switchSettingsTab('s-events')">🎲 Events</button>
     <button class="settings-tab" onclick="switchSettingsTab('s-allgemein')">🔧 Allgemein</button>
+    <button class="settings-tab" onclick="switchSettingsTab('s-backup')">📲 Backup & Gerätewechsel</button>
   </div>
 
   <!-- TAB: PUNKTE -->
@@ -1366,6 +1375,48 @@ hr.divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:16px 0}
       </div>
       <button class="btn btn-danger btn-sm" style="margin-top:10px" onclick="resetGlobalGameStatsWithConfirmation()">Globale Spielstatistiken zurücksetzen</button>
     </details>
+  </div>
+
+  <!-- TAB: BACKUP & GERÄTEWECHSEL -->
+  <div id="s-backup" class="settings-panel">
+    <div class="device-transfer-section">
+      <div style="font-weight:850;font-size:1rem;margin-bottom:5px">📲 Auf ein neues Gerät wechseln</div>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:12px">Erstelle auf diesem Gerät einen verschlüsselten Code und gib ihn innerhalb von 60 Minuten auf dem neuen Gerät ein.</p>
+      <button class="btn btn-primary" id="device-transfer-create-btn" onclick="createDeviceTransfer()" style="width:100%">Übertragungscode erstellen</button>
+      <div id="device-transfer-created" style="display:none;margin-top:12px">
+        <div class="device-transfer-code" id="device-transfer-code-display"></div>
+        <div id="device-transfer-expiry" style="text-align:center;font-size:.78rem;color:var(--muted)"></div>
+        <div id="device-transfer-created-summary"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-secondary" onclick="copyDeviceTransferCode()" style="flex:1">Code kopieren</button>
+          <button class="btn btn-danger" onclick="deleteOwnDeviceTransfer()" style="flex:1">Backup vorzeitig löschen</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="device-transfer-section">
+      <div style="font-weight:850;font-size:1rem;margin-bottom:5px">📥 Daten auf diesem Gerät übernehmen</div>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:10px">Gib hier den 16-stelligen Code des alten Geräts ein. Deine Daten werden erst nach einer Vorschau und Bestätigung ersetzt.</p>
+      <label for="device-transfer-code-input">Übertragungscode</label>
+      <input type="text" id="device-transfer-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="19" placeholder="0000 0000 0000 0000" oninput="formatDeviceTransferCodeInput(this)"/>
+      <button class="btn btn-gold" id="device-transfer-fetch-btn" onclick="fetchDeviceTransfer()" style="width:100%;margin-top:10px">Daten abrufen</button>
+      <div id="device-transfer-preview" style="display:none;margin-top:12px"></div>
+    </div>
+
+    <div class="device-transfer-section">
+      <div style="font-weight:850;font-size:1rem;margin-bottom:5px">📁 Datei-Backup (Notfallweg)</div>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:10px">Enthält dieselben vollständigen App-Daten wie die Geräteübertragung und funktioniert ohne Firebase.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary" id="complete-backup-download-btn" onclick="downloadCompleteBackup()" style="flex:1">Komplettes Backup herunterladen</button>
+        <button class="btn btn-secondary" id="complete-backup-import-btn" onclick="document.getElementById('complete-backup-file-input').click()" style="flex:1">Komplettes Backup importieren</button>
+      </div>
+      <input type="file" id="complete-backup-file-input" accept=".json,application/json" style="display:none" onchange="importCompleteBackupFile(event)"/>
+    </div>
+
+    <div id="device-transfer-status" style="display:none;background:rgba(78,205,196,.08);border:1px solid rgba(78,205,196,.22);border-radius:10px;padding:10px 12px;font-size:.8rem;color:var(--muted)">
+      <div id="device-transfer-status-text"></div>
+      <div class="device-transfer-progress"><span id="device-transfer-progress-bar"></span></div>
+    </div>
   </div>
 
 </div>
@@ -2534,6 +2585,7 @@ function openSettingsModal() {
   document.getElementById('haptic-toggle-check').checked = hapticEnabled;
   document.getElementById('events-enabled-check').checked = areEventsEnabled();
   document.getElementById('secret-goals-enabled-check').checked = areSecretGoalsEnabled();
+  if (typeof renderDeviceTransferPanel === 'function') renderDeviceTransferPanel();
   openModal('modal-settings');
 }
 
@@ -2541,7 +2593,7 @@ function switchSettingsTab(id) {
   document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
   document.getElementById(id)?.classList.add('active');
-  const tabs = ['s-punkte','s-joker','s-ziele','s-events','s-allgemein'];
+  const tabs = ['s-punkte','s-joker','s-ziele','s-events','s-allgemein','s-backup'];
   const idx = tabs.indexOf(id);
   document.querySelectorAll('.settings-tab')[idx]?.classList.add('active');
 }
@@ -4952,7 +5004,15 @@ function saveSession(finalize) {
 function getSessions() {
   try { return JSON.parse(localStorage.getItem('sm_sessions_v2') || '{}'); } catch { return {}; }
 }
-function setSessions(s) { try { localStorage.setItem('sm_sessions_v2', JSON.stringify(s)); } catch {} }
+function setSessions(s) {
+  try {
+    localStorage.setItem('sm_sessions_v2', JSON.stringify(s));
+    return true;
+  } catch (error) {
+    console.error('[Session storage failed]', error);
+    return false;
+  }
+}
 
 function renderSavedSessions() {
   const c = document.getElementById('saved-sessions-list');
@@ -5570,7 +5630,17 @@ function saveLS() {
     localStorage.setItem('sm_joker_defs', JSON.stringify(JOKER_DEFS));
     localStorage.setItem('sm_custom_events', JSON.stringify(state.customEvents||[]));
     localStorage.setItem('sm_feature_settings', JSON.stringify(ensureFeatureSettings()));
-  } catch {}
+    localStorage.setItem('sm_marathon_preferences', JSON.stringify({
+      marathonMode:normalizeMarathonMode(state.marathonMode),
+      marathonScope:normalizeMarathonScope(state.marathonScope),
+      timeLimit:state.timeLimit,
+      configuredGameCount:state.configuredGameCount
+    }));
+    return true;
+  } catch (error) {
+    console.error('[App storage failed]', error);
+    return false;
+  }
 }
 function saveCurrentToLS() {
   saveLS();
@@ -5619,10 +5689,11 @@ function loadLS() {
         // Only apply to matching IDs — ignore stale entries like 'shield' that no longer exist
         const target = JOKER_DEFS.find(j => j.id === saved.id);
         if (target) {
-          // Only carry over cosmetic fields (img, icon, name) — not desc or id
+          // ID bleibt fest; alle vom Nutzer anpassbaren Jokerfelder werden geladen.
           if (saved.img !== undefined) target.img = saved.img;
           if (saved.icon && saved.id !== 'veto') target.icon = saved.icon;
           if (saved.name && saved.id !== 'veto') target.name = saved.name;
+          if (saved.desc !== undefined) target.desc = saved.desc;
         }
       });
     }
@@ -5630,6 +5701,14 @@ function loadLS() {
     if (ce) state.customEvents = JSON.parse(ce);
     const featureSettings = localStorage.getItem('sm_feature_settings');
     if (featureSettings) state.settings = JSON.parse(featureSettings);
+    const marathonPreferences = localStorage.getItem('sm_marathon_preferences');
+    if (marathonPreferences) {
+      const preferences = JSON.parse(marathonPreferences);
+      state.marathonMode = normalizeMarathonMode(preferences.marathonMode);
+      state.marathonScope = normalizeMarathonScope(preferences.marathonScope);
+      state.timeLimit = Math.max(1, parseInt(preferences.timeLimit, 10) || 120);
+      state.configuredGameCount = Math.max(1, parseInt(preferences.configuredGameCount, 10) || 5);
+    }
     ensureFeatureSettings();
     normalizeGameCategories();
     syncGlobalGameStatNames();
@@ -7645,7 +7724,7 @@ function fbInit() {
     return false;
   }
   try {
-    fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+    fbApp = firebase.apps?.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
     fbDb = firebase.database();
     fbSyncEnabled = true;
     return true;
@@ -10027,6 +10106,693 @@ document.addEventListener('sm-mobile-local-refresh', e => {
       .forEach(btn => { btn.innerHTML = '🚀 Marathon starten'; btn.setAttribute('onclick','startSecretGoals()'); });
   });
 })();
+</script>
+
+<script>
+// Vollständiges Backup und verschlüsselter Gerätewechsel (getrennt von sessions/*).
+const COMPLETE_BACKUP_VERSION = 1;
+const DEVICE_TRANSFER_TTL_MS = 60 * 60 * 1000;
+const DEVICE_TRANSFER_CHUNK_SIZE = 256 * 1024;
+const DEVICE_TRANSFER_PBKDF2_ITERATIONS = 250000;
+const DEVICE_TRANSFER_INTERNAL_KEYS = new Set([
+  'sm_before_device_transfer_backup',
+  'sm_pending_transfer_deletes',
+  'sm_device_transfer_own_codes',
+  'sm_device_transfer_last_created'
+]);
+let deviceTransferBusy = false;
+let currentCreatedDeviceTransfer = null;
+let pendingDeviceTransferImport = null;
+
+function parseBackupStorageValue(storage, key, fallback) {
+  try { return storage[key] ? JSON.parse(storage[key]) : fallback; } catch { return fallback; }
+}
+
+function countStoredRecords(value, excludeAutosave = false) {
+  if (Array.isArray(value)) return value.length;
+  if (!value || typeof value !== 'object') return 0;
+  return Object.keys(value).filter(key => !excludeAutosave || key !== '__autosave__').length;
+}
+
+function buildBackupSummary(storage) {
+  const games = parseBackupStorageValue(storage, 'sm_games_v2', []);
+  const categories = parseBackupStorageValue(storage, 'sm_game_categories_v1', []);
+  const tournaments = parseBackupStorageValue(storage, 'sm_tournaments_v2', {});
+  const sessions = parseBackupStorageValue(storage, 'sm_sessions_v2', {});
+  const jokerDefs = parseBackupStorageValue(storage, 'sm_joker_defs', []);
+  return {
+    games: Array.isArray(games) ? games.length : 0,
+    categories: Array.isArray(categories) ? categories.length : 0,
+    tournaments: countStoredRecords(tournaments),
+    sessions: countStoredRecords(sessions, true),
+    jokerImages: Array.isArray(jokerDefs) ? jokerDefs.filter(j => !!j?.img).length : 0,
+    coverImages: Array.isArray(games) ? games.filter(g => !!(g?.coverImg || g?.coverOriginal)).length : 0
+  };
+}
+
+function persistAppDataForBackup() {
+  if (saveLS() === false) throw new Error('Die aktuellen App-Daten konnten nicht lokal gespeichert werden.');
+  // Einen laufenden Marathon lokal erfassen, ohne den Firebase-Pfad sessions/* anzufassen.
+  if (typeof hasActiveMarathonRuntime === 'function' && hasActiveMarathonRuntime()) {
+    const sessions = getSessions();
+    sessions.__autosave__ = buildSessionSnapshot('Autosave', false);
+    sessions.__autosave__.id = '__autosave__';
+    sessions.__autosave__.name = 'Autosave';
+    if (setSessions(sessions) === false) throw new Error('Der aktuelle Marathon konnte nicht für das Backup gespeichert werden.');
+  }
+  // Dabei werden ggf. alte Archiv-Keys in den bereits verwendeten aktuellen Key migriert.
+  if (typeof getTournaments === 'function') getTournaments();
+}
+
+async function buildCompleteBackup() {
+  persistAppDataForBackup();
+  const storage = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || DEVICE_TRANSFER_INTERNAL_KEYS.has(key)) continue;
+    if (key.startsWith('sm_')) storage[key] = localStorage.getItem(key);
+  }
+  return {
+    version: COMPLETE_BACKUP_VERSION,
+    app: 'Spielmarathon',
+    createdAt: Date.now(),
+    localStorage: storage,
+    summary: buildBackupSummary(storage)
+  };
+}
+
+function validateCompleteBackup(backup) {
+  if (!backup || backup.app !== 'Spielmarathon' || backup.version !== COMPLETE_BACKUP_VERSION) {
+    throw new Error('Dieses Backupformat wird nicht unterstützt.');
+  }
+  if (!backup.localStorage || typeof backup.localStorage !== 'object' || Array.isArray(backup.localStorage)) {
+    throw new Error('Das Backup enthält keine gültigen App-Daten.');
+  }
+  if (!Number.isFinite(Number(backup.createdAt)) || Number(backup.createdAt) <= 0) {
+    throw new Error('Das Backup enthält kein gültiges Erstellungsdatum.');
+  }
+  Object.entries(backup.localStorage).forEach(([key, value]) => {
+    if (!key.startsWith('sm_') || key.length > 120 || typeof value !== 'string') {
+      throw new Error('Das Backup enthält einen ungültigen Speichereintrag.');
+    }
+  });
+  ['sm_games_v2','sm_game_categories_v1','sm_players_v2','sm_pts_v2','sm_joker_defs'].forEach(key => {
+    if (typeof backup.localStorage[key] !== 'string') throw new Error(`Pflichtdaten fehlen: ${key}`);
+  });
+  const games = parseBackupStorageValue(backup.localStorage, 'sm_games_v2', null);
+  const categories = parseBackupStorageValue(backup.localStorage, 'sm_game_categories_v1', null);
+  const players = parseBackupStorageValue(backup.localStorage, 'sm_players_v2', null);
+  const jokerDefs = parseBackupStorageValue(backup.localStorage, 'sm_joker_defs', null);
+  if (![games, categories, players, jokerDefs].every(Array.isArray)) {
+    throw new Error('Bibliotheks-, Kategorie-, Spieler- oder Jokerdaten sind beschädigt.');
+  }
+  backup.summary = buildBackupSummary(backup.localStorage);
+  return backup;
+}
+
+function renderBackupSummary(summary) {
+  const values = summary || {};
+  return `<div class="device-transfer-summary">
+    <div><strong>${values.games || 0}</strong>Spiele</div>
+    <div><strong>${values.categories || 0}</strong>Oberkategorien</div>
+    <div><strong>${values.coverImages || 0}</strong>Coverbilder</div>
+    <div><strong>${values.jokerImages || 0}</strong>Jokerbilder</div>
+    <div><strong>${values.tournaments || 0}</strong>Turniere</div>
+    <div><strong>${values.sessions || 0}</strong>Sessions</div>
+  </div>`;
+}
+
+function setDeviceTransferBusy(busy) {
+  deviceTransferBusy = busy;
+  ['device-transfer-create-btn','device-transfer-fetch-btn','complete-backup-download-btn','complete-backup-import-btn'].forEach(id => {
+    const button = document.getElementById(id);
+    if (button) button.disabled = busy;
+  });
+}
+
+function setDeviceTransferProgress(text, percent = 0, visible = true) {
+  const status = document.getElementById('device-transfer-status');
+  const label = document.getElementById('device-transfer-status-text');
+  const bar = document.getElementById('device-transfer-progress-bar');
+  if (status) status.style.display = visible ? '' : 'none';
+  if (label) label.textContent = text || '';
+  if (bar) bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+function normalizeDeviceTransferCode(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 16);
+}
+
+function formatDeviceTransferCode(code) {
+  return normalizeDeviceTransferCode(code).replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+}
+
+function formatDeviceTransferCodeInput(input) {
+  input.value = formatDeviceTransferCode(input.value);
+}
+
+function generateDeviceTransferCode() {
+  let code = '';
+  while (code.length < 16) {
+    const bytes = crypto.getRandomValues(new Uint8Array(24));
+    for (const byte of bytes) {
+      if (byte >= 250) continue; // Rejection Sampling vermeidet Modulo-Verzerrung.
+      code += String(byte % 10);
+      if (code.length === 16) break;
+    }
+  }
+  return code;
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const blockSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += blockSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + blockSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function sha256Hex(bytes) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function compressBackup(bytes) {
+  if (typeof CompressionStream !== 'function') return {bytes, compression:'none'};
+  try {
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+    return {bytes:new Uint8Array(await new Response(stream).arrayBuffer()), compression:'gzip'};
+  } catch (error) {
+    console.warn('[Device transfer compression skipped]', error);
+    return {bytes, compression:'none'};
+  }
+}
+
+async function decompressBackup(bytes, compression) {
+  if (compression === 'none') return bytes;
+  if (compression !== 'gzip' || typeof DecompressionStream !== 'function') {
+    throw new Error('Dieses Gerät kann das komprimierte Backup nicht entpacken.');
+  }
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function deriveTransferKey(code, salt) {
+  const material = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(normalizeDeviceTransferCode(code)), 'PBKDF2', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey({
+    name:'PBKDF2', salt, iterations:DEVICE_TRANSFER_PBKDF2_ITERATIONS, hash:'SHA-256'
+  }, material, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+
+async function encryptTransferData(bytes, code) {
+  const compressed = await compressBackup(bytes);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveTransferKey(code, salt);
+  const encrypted = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, compressed.bytes));
+  return {
+    encrypted,
+    salt:bytesToBase64(salt),
+    iv:bytesToBase64(iv),
+    compression:compressed.compression,
+    checksum:await sha256Hex(encrypted)
+  };
+}
+
+async function decryptTransferData(encrypted, code, metadata) {
+  const key = await deriveTransferKey(code, base64ToBytes(metadata.salt));
+  const decrypted = new Uint8Array(await crypto.subtle.decrypt(
+    {name:'AES-GCM', iv:base64ToBytes(metadata.iv)}, key, encrypted
+  ));
+  return decompressBackup(decrypted, metadata.compression);
+}
+
+function splitIntoChunks(value, chunkSize = DEVICE_TRANSFER_CHUNK_SIZE) {
+  const chunks = [];
+  for (let i = 0; i < value.length; i += chunkSize) chunks.push(value.slice(i, i + chunkSize));
+  return chunks;
+}
+
+function joinChunks(chunks, expectedCount) {
+  const result = [];
+  for (let i = 0; i < expectedCount; i++) {
+    const chunk = Array.isArray(chunks) ? chunks[i] : chunks?.[String(i)];
+    if (typeof chunk !== 'string') throw new Error(`Datenblock ${i + 1} fehlt.`);
+    result.push(chunk);
+  }
+  return result.join('');
+}
+
+async function ensureDeviceTransferAuth() {
+  if (!window.crypto?.subtle) throw new Error('Sichere Verschlüsselung wird von diesem Browser nicht unterstützt.');
+  if (typeof fbInit !== 'function' || !fbInit()) throw new Error('Firebase ist nicht konfiguriert.');
+  if (!window.firebase?.auth) throw new Error('Firebase Authentication konnte nicht geladen werden.');
+  const auth = firebase.auth();
+  if (auth.currentUser) return auth.currentUser;
+  try {
+    const credential = await auth.signInAnonymously();
+    return credential.user;
+  } catch (error) {
+    if (error?.code === 'auth/operation-not-allowed') {
+      throw new Error('Anonyme Firebase-Anmeldung ist noch nicht aktiviert.');
+    }
+    if (error?.code === 'auth/network-request-failed') throw new Error('Keine Internetverbindung zu Firebase.');
+    throw new Error('Firebase-Anmeldung fehlgeschlagen: ' + (error?.message || 'Unbekannter Fehler'));
+  }
+}
+
+function explainDeviceTransferError(error) {
+  if (error?.code === 'PERMISSION_DENIED' || error?.code === 'permission_denied') {
+    return 'Firebase verweigert den Zugriff. Bitte prüfe die Datenbankregeln.';
+  }
+  if (/network|offline|connection/i.test(error?.message || '')) return 'Keine Internetverbindung zu Firebase.';
+  return error?.message || 'Die Geräteübertragung ist fehlgeschlagen.';
+}
+
+function getOwnDeviceTransferCodes() {
+  try { return JSON.parse(localStorage.getItem('sm_device_transfer_own_codes') || '{}'); } catch { return {}; }
+}
+
+function setOwnDeviceTransferCodes(codes) {
+  localStorage.setItem('sm_device_transfer_own_codes', JSON.stringify(codes));
+}
+
+async function cleanupExpiredOwnDeviceTransfers() {
+  const codes = getOwnDeviceTransferCodes();
+  const now = Date.now();
+  for (const [code, expiresAt] of Object.entries(codes)) {
+    if (Number(expiresAt) > now) continue;
+    try {
+      await fbDb.ref(`deviceTransfers/${code}`).remove();
+      delete codes[code];
+    } catch (error) {
+      console.warn('[Expired transfer cleanup postponed]', code, error);
+    }
+  }
+  setOwnDeviceTransferCodes(codes);
+}
+
+async function createDeviceTransfer() {
+  if (deviceTransferBusy) return;
+  setDeviceTransferBusy(true);
+  let createdRef = null;
+  try {
+    setDeviceTransferProgress('Lokale App-Daten werden vorbereitet ...', 4);
+    const user = await ensureDeviceTransferAuth();
+    await cleanupExpiredOwnDeviceTransfers();
+    const backup = await buildCompleteBackup();
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(backup));
+    setDeviceTransferProgress('Backup wird komprimiert und verschlüsselt ...', 12);
+
+    let code = '';
+    let transferRef = null;
+    let encryptedPackage = null;
+    let chunks = null;
+    let metadata = null;
+    let lastCreateError = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      code = generateDeviceTransferCode();
+      encryptedPackage = await encryptTransferData(jsonBytes, code);
+      const base64 = bytesToBase64(encryptedPackage.encrypted);
+      chunks = splitIntoChunks(base64);
+      const createdAt = Date.now();
+      metadata = {
+        version:COMPLETE_BACKUP_VERSION,
+        createdAt,
+        expiresAt:createdAt + DEVICE_TRANSFER_TTL_MS,
+        ownerUid:user.uid,
+        chunkCount:chunks.length,
+        byteLength:encryptedPackage.encrypted.byteLength,
+        checksum:encryptedPackage.checksum,
+        salt:encryptedPackage.salt,
+        iv:encryptedPackage.iv,
+        compression:encryptedPackage.compression,
+        complete:false
+      };
+      transferRef = fbDb.ref(`deviceTransfers/${code}`);
+      try {
+        await transferRef.set({metadata});
+        createdRef = transferRef;
+        break;
+      } catch (error) {
+        lastCreateError = error;
+      }
+    }
+    if (!createdRef) throw lastCreateError || new Error('Kein Übertragungscode konnte angelegt werden.');
+
+    for (let i = 0; i < chunks.length; i++) {
+      setDeviceTransferProgress(`Block ${i + 1} von ${chunks.length} wird hochgeladen`, 15 + Math.round(((i + 1) / chunks.length) * 78));
+      await createdRef.child(`chunks/${i}`).set(chunks[i]);
+    }
+    await createdRef.child('metadata/complete').set(true);
+    metadata.complete = true;
+
+    const ownCodes = getOwnDeviceTransferCodes();
+    ownCodes[code] = metadata.expiresAt;
+    setOwnDeviceTransferCodes(ownCodes);
+    currentCreatedDeviceTransfer = {code, metadata, summary:backup.summary};
+    localStorage.setItem('sm_device_transfer_last_created', JSON.stringify(currentCreatedDeviceTransfer));
+    renderCreatedDeviceTransfer();
+    setDeviceTransferProgress('Backup vollständig hochgeladen.', 100);
+    showToast('Übertragungscode wurde erstellt.');
+  } catch (error) {
+    if (createdRef) {
+      try { await createdRef.remove(); } catch (cleanupError) { console.warn('[Incomplete transfer cleanup failed]', cleanupError); }
+    }
+    console.error('[Device transfer create failed]', error);
+    setDeviceTransferProgress(explainDeviceTransferError(error), 0);
+    showToast(explainDeviceTransferError(error));
+  } finally {
+    setDeviceTransferBusy(false);
+  }
+}
+
+function renderCreatedDeviceTransfer() {
+  const container = document.getElementById('device-transfer-created');
+  if (!container || !currentCreatedDeviceTransfer) return;
+  const {code, metadata, summary} = currentCreatedDeviceTransfer;
+  container.style.display = '';
+  document.getElementById('device-transfer-code-display').textContent = formatDeviceTransferCode(code);
+  document.getElementById('device-transfer-expiry').textContent = `Gültig bis ${new Date(metadata.expiresAt).toLocaleString('de-DE')}`;
+  document.getElementById('device-transfer-created-summary').innerHTML = renderBackupSummary(summary);
+}
+
+function renderDeviceTransferPanel() {
+  if (!currentCreatedDeviceTransfer) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('sm_device_transfer_last_created') || 'null');
+      if (saved?.code && saved?.metadata?.expiresAt > Date.now()) currentCreatedDeviceTransfer = saved;
+    } catch {}
+  }
+  if (currentCreatedDeviceTransfer) renderCreatedDeviceTransfer();
+}
+
+async function copyDeviceTransferCode() {
+  const code = currentCreatedDeviceTransfer?.code;
+  if (!code) return;
+  try {
+    await navigator.clipboard.writeText(formatDeviceTransferCode(code));
+    showToast('Code kopiert.');
+  } catch {
+    showToast('Code konnte nicht kopiert werden.');
+  }
+}
+
+async function deleteOwnDeviceTransfer() {
+  if (deviceTransferBusy || !currentCreatedDeviceTransfer?.code) return;
+  setDeviceTransferBusy(true);
+  try {
+    await ensureDeviceTransferAuth();
+    const code = currentCreatedDeviceTransfer.code;
+    await fbDb.ref(`deviceTransfers/${code}`).remove();
+    const ownCodes = getOwnDeviceTransferCodes();
+    delete ownCodes[code];
+    setOwnDeviceTransferCodes(ownCodes);
+    localStorage.removeItem('sm_device_transfer_last_created');
+    currentCreatedDeviceTransfer = null;
+    const container = document.getElementById('device-transfer-created');
+    if (container) container.style.display = 'none';
+    setDeviceTransferProgress('Cloud-Backup wurde gelöscht.', 100);
+  } catch (error) {
+    showToast(explainDeviceTransferError(error));
+  } finally {
+    setDeviceTransferBusy(false);
+  }
+}
+
+async function fetchDeviceTransfer() {
+  if (deviceTransferBusy) return;
+  const input = document.getElementById('device-transfer-code-input');
+  const code = normalizeDeviceTransferCode(input?.value);
+  if (code.length !== 16) {
+    showToast('Bitte einen 16-stelligen Übertragungscode eingeben.');
+    return;
+  }
+  setDeviceTransferBusy(true);
+  try {
+    await ensureDeviceTransferAuth();
+    setDeviceTransferProgress('Metadaten werden abgerufen ...', 5);
+    const transferRef = fbDb.ref(`deviceTransfers/${code}`);
+    const metadataSnap = await transferRef.child('metadata').once('value');
+    const metadata = metadataSnap.val();
+    if (!metadata) throw new Error('Code nicht gefunden.');
+    if (metadata.complete !== true) throw new Error('Dieses Backup wurde nicht vollständig hochgeladen.');
+    if (Date.now() > Number(metadata.expiresAt)) {
+      try { await transferRef.remove(); } catch {}
+      throw new Error('Dieser Übertragungscode ist abgelaufen.');
+    }
+    if (!Number.isInteger(metadata.chunkCount) || metadata.chunkCount < 1 || metadata.chunkCount > 1000) {
+      throw new Error('Das Backup enthält ungültige Metadaten.');
+    }
+    if (metadata.version !== COMPLETE_BACKUP_VERSION || !['gzip','none'].includes(metadata.compression)
+      || typeof metadata.salt !== 'string' || typeof metadata.iv !== 'string'
+      || !/^[a-f0-9]{64}$/.test(metadata.checksum || '')
+      || !Number.isInteger(metadata.byteLength) || metadata.byteLength < 1 || metadata.byteLength > 100 * 1024 * 1024) {
+      throw new Error('Das Backup enthält ungültige Metadaten.');
+    }
+    setDeviceTransferProgress(`${metadata.chunkCount} Datenblöcke werden geladen ...`, 15);
+    const chunksSnap = await transferRef.child('chunks').once('value');
+    const chunks = chunksSnap.val();
+    const encoded = joinChunks(chunks, metadata.chunkCount);
+    setDeviceTransferProgress('Daten werden geprüft und entschlüsselt ...', 72);
+    const encrypted = base64ToBytes(encoded);
+    if (encrypted.byteLength !== Number(metadata.byteLength) || await sha256Hex(encrypted) !== metadata.checksum) {
+      throw new Error('Der Code ist falsch, abgelaufen oder das Backup ist beschädigt.');
+    }
+    let decrypted;
+    try {
+      decrypted = await decryptTransferData(encrypted, code, metadata);
+    } catch {
+      throw new Error('Der Code ist falsch, abgelaufen oder das Backup ist beschädigt.');
+    }
+    const backup = validateCompleteBackup(JSON.parse(new TextDecoder().decode(decrypted)));
+    pendingDeviceTransferImport = {backup, source:'cloud', code};
+    renderPendingDeviceTransferPreview();
+    setDeviceTransferProgress('Backup erfolgreich geprüft. Noch wurden keine lokalen Daten geändert.', 100);
+  } catch (error) {
+    console.error('[Device transfer fetch failed]', error);
+    pendingDeviceTransferImport = null;
+    const preview = document.getElementById('device-transfer-preview');
+    if (preview) preview.style.display = 'none';
+    setDeviceTransferProgress(explainDeviceTransferError(error), 0);
+    showToast(explainDeviceTransferError(error));
+  } finally {
+    setDeviceTransferBusy(false);
+  }
+}
+
+function renderPendingDeviceTransferPreview() {
+  const preview = document.getElementById('device-transfer-preview');
+  if (!preview || !pendingDeviceTransferImport) return;
+  const backup = pendingDeviceTransferImport.backup;
+  preview.style.display = '';
+  preview.innerHTML = `<div style="font-weight:850;color:var(--green);margin-bottom:5px">Backup gefunden</div>
+    <div style="font-size:.78rem;color:var(--muted)">Erstellt am ${new Date(backup.createdAt).toLocaleString('de-DE')}</div>
+    ${renderBackupSummary(backup.summary)}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="cancelPendingDeviceTransferImport()" style="flex:1">Abbrechen</button>
+      <button class="btn btn-danger" onclick="confirmPendingDeviceTransferImport()" style="flex:1">Daten auf diesem Gerät ersetzen</button>
+    </div>`;
+}
+
+function cancelPendingDeviceTransferImport() {
+  pendingDeviceTransferImport = null;
+  const preview = document.getElementById('device-transfer-preview');
+  if (preview) preview.style.display = 'none';
+}
+
+function confirmPendingDeviceTransferImport() {
+  if (!pendingDeviceTransferImport || deviceTransferBusy) return;
+  showConfirm(
+    'Spielmarathon-Daten ersetzen?',
+    'Die Spielmarathon-Daten auf diesem Gerät werden ersetzt. Vorher wird automatisch eine lokale Backup-Datei heruntergeladen. Möchtest du fortfahren?',
+    () => applyPendingDeviceTransferImport(),
+    'Daten übernehmen'
+  );
+}
+
+function getCurrentDateFilePart() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function downloadBackupObject(backup, filename) {
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadCompleteBackup() {
+  if (deviceTransferBusy) return;
+  setDeviceTransferBusy(true);
+  try {
+    const backup = await buildCompleteBackup();
+    downloadBackupObject(backup, `spielmarathon-backup-${getCurrentDateFilePart()}.json`);
+    showToast('Vollständiges Backup heruntergeladen.');
+  } catch (error) {
+    showToast('Backup konnte nicht erstellt werden: ' + error.message);
+  } finally {
+    setDeviceTransferBusy(false);
+  }
+}
+
+function clearRestorableAppStorage() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('sm_') && !DEVICE_TRANSFER_INTERNAL_KEYS.has(key)) keys.push(key);
+  }
+  keys.forEach(key => localStorage.removeItem(key));
+}
+
+function restoreBackupStorage(backup) {
+  Object.entries(backup.localStorage).forEach(([key, value]) => {
+    if (key.startsWith('sm_') && !DEVICE_TRANSFER_INTERNAL_KEYS.has(key)) localStorage.setItem(key, value);
+  });
+}
+
+function addPendingTransferDelete(code) {
+  let pending = [];
+  try { pending = JSON.parse(localStorage.getItem('sm_pending_transfer_deletes') || '[]'); } catch {}
+  if (!pending.includes(code)) pending.push(code);
+  localStorage.setItem('sm_pending_transfer_deletes', JSON.stringify(pending));
+}
+
+function storeInternalPreTransferSnapshot(backup) {
+  const serialized = JSON.stringify(backup);
+  try {
+    localStorage.setItem('sm_before_device_transfer_backup', serialized);
+    return 'localStorage';
+  } catch (localError) {
+    console.warn('[Local pre-transfer snapshot failed]', localError);
+  }
+  try {
+    sessionStorage.setItem('sm_before_device_transfer_backup', serialized);
+    return 'sessionStorage';
+  } catch (sessionError) {
+    console.warn('[Session pre-transfer snapshot failed]', sessionError);
+  }
+  throw new Error('Der interne Sicherheits-Snapshot konnte nicht angelegt werden. Der Import wurde abgebrochen.');
+}
+
+async function applyPendingDeviceTransferImport() {
+  if (!pendingDeviceTransferImport || deviceTransferBusy) return;
+  setDeviceTransferBusy(true);
+  const transfer = pendingDeviceTransferImport;
+  let currentBackup = null;
+  try {
+    setDeviceTransferProgress('Aktueller Stand wird zur Sicherheit gesichert ...', 5);
+    currentBackup = await buildCompleteBackup();
+    downloadBackupObject(currentBackup, `spielmarathon-vor-geraetewechsel-${getCurrentDateFilePart()}.json`);
+    storeInternalPreTransferSnapshot(currentBackup);
+
+    setDeviceTransferProgress('Lokale Spielmarathon-Daten werden ersetzt ...', 45);
+    try {
+      clearRestorableAppStorage();
+      restoreBackupStorage(transfer.backup);
+    } catch (restoreError) {
+      clearRestorableAppStorage();
+      restoreBackupStorage(currentBackup);
+      throw new Error('Die Daten konnten nicht vollständig gespeichert werden. Der vorherige Stand wurde wiederhergestellt.');
+    }
+
+    let deleteWarning = false;
+    if (transfer.source === 'cloud' && transfer.code) {
+      setDeviceTransferProgress('Einmal-Code wird gelöscht ...', 88);
+      try {
+        await ensureDeviceTransferAuth();
+        await fbDb.ref(`deviceTransfers/${transfer.code}`).remove();
+      } catch (error) {
+        deleteWarning = true;
+        addPendingTransferDelete(transfer.code);
+        console.warn('[Used transfer delete deferred]', error);
+      }
+    }
+    setDeviceTransferProgress(deleteWarning
+      ? 'Daten übernommen. Der Einmal-Code wird beim nächsten Start erneut gelöscht.'
+      : 'Daten erfolgreich übernommen. Die App wird neu geladen.', 100);
+    showToast(deleteWarning ? 'Daten übernommen; Code-Löschung wird erneut versucht.' : 'Daten erfolgreich übernommen.');
+    pendingDeviceTransferImport = null;
+    setTimeout(() => location.reload(), 1200);
+  } catch (error) {
+    console.error('[Complete backup restore failed]', error);
+    setDeviceTransferProgress(error.message, 0);
+    showToast(error.message);
+  } finally {
+    setDeviceTransferBusy(false);
+  }
+}
+
+function importCompleteBackupFile(event) {
+  const file = event.target.files?.[0];
+  if (!file || deviceTransferBusy) return;
+  const reader = new FileReader();
+  reader.onload = loadEvent => {
+    try {
+      const parsed = JSON.parse(loadEvent.target.result);
+      if (parsed?.app !== 'Spielmarathon' || parsed?.version !== COMPLETE_BACKUP_VERSION) {
+        // Alte Spiele-Exporte bleiben über die bestehende Merge-Importfunktion nutzbar.
+        if (Array.isArray(parsed) || Array.isArray(parsed?.games)) {
+          showToast('Altes Spiele-Exportformat erkannt; Spiele werden wie bisher zusammengeführt.');
+          importGamesFile({target:{files:[file], value:''}});
+          return;
+        }
+      }
+      const backup = validateCompleteBackup(parsed);
+      pendingDeviceTransferImport = {backup, source:'file', code:null};
+      renderPendingDeviceTransferPreview();
+      switchSettingsTab('s-backup');
+      showToast('Backup-Datei geprüft. Bitte Vorschau bestätigen.');
+    } catch (error) {
+      showToast('Backup-Datei ist ungültig: ' + error.message);
+    } finally {
+      event.target.value = '';
+    }
+  };
+  reader.onerror = () => {
+    showToast('Backup-Datei konnte nicht gelesen werden.');
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+async function retryPendingTransferDeletes() {
+  let pending = [];
+  try { pending = JSON.parse(localStorage.getItem('sm_pending_transfer_deletes') || '[]'); } catch {}
+  if (!pending.length) return;
+  try {
+    await ensureDeviceTransferAuth();
+    const remaining = [];
+    for (const code of pending) {
+      try { await fbDb.ref(`deviceTransfers/${normalizeDeviceTransferCode(code)}`).remove(); }
+      catch { remaining.push(code); }
+    }
+    if (remaining.length) localStorage.setItem('sm_pending_transfer_deletes', JSON.stringify(remaining));
+    else localStorage.removeItem('sm_pending_transfer_deletes');
+  } catch (error) {
+    console.warn('[Pending transfer cleanup postponed]', error);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderDeviceTransferPanel();
+  retryPendingTransferDeletes();
+});
 </script>
 
 </body>
