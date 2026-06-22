@@ -1534,6 +1534,42 @@ let currentHostPopup = null;
 let hostJokerRequestQueue = [];
 let activeHostJokerRequest = null;
 
+function hasPendingHostResolutions() {
+  const queueHasItems =
+    hostPopupQueue.length > 0 ||
+    (Array.isArray(state.hostPopupQueue) && state.hostPopupQueue.length > 0) ||
+    (Array.isArray(state.resultResolutionQueue) && state.resultResolutionQueue.length > 0) ||
+    (Array.isArray(state.pendingResultResolutions) && state.pendingResultResolutions.length > 0);
+  const activeHostPopup = !!(hostPopupActive && currentHostPopup);
+  const modalOpen = !!document.querySelector(
+    '.host-popup-modal.open, #modal-host-popup.open, #modal-resolution-popup.open'
+  );
+
+  return Boolean(queueHasItems || activeHostPopup || modalOpen);
+}
+
+function normalizeHostResolutionState() {
+  if ((state.hostResolutionPending || state._hostResolutionPending) && !hasPendingHostResolutions()) {
+    console.warn('[hostResolutionPending repaired] Flag war true, aber keine Queue/kein Popup vorhanden.');
+    state.hostResolutionPending = false;
+    state._hostResolutionPending = false;
+  }
+  return hasPendingHostResolutions();
+}
+
+function showPendingHostResolutionIfNeeded() {
+  normalizeHostResolutionState();
+  if (!hasPendingHostResolutions()) return false;
+
+  const modal = document.getElementById('modal-host-popup');
+  if (hostPopupActive && currentHostPopup && modal && !modal.classList.contains('open')) {
+    modal.classList.add('open');
+  } else if (!hostPopupActive && hostPopupQueue.length) {
+    showNextHostPopup();
+  }
+  return true;
+}
+
 function getHostPopupPlayerColor(playerName) {
   const player = state.players?.find(p => p.name === playerName);
   return player ? getPlayerColorHex(player.color) : '#ffffff';
@@ -1605,12 +1641,14 @@ function confirmCurrentHostPopup() {
   try { popup.onConfirm?.(); } catch (error) { console.error('[host popup confirm]', error); }
   saveCurrentToLS();
   showNextHostPopup();
+  normalizeHostResolutionState();
 }
 
 function finishHostResolutionQueueIfReady() {
   if (!state.hostResolutionPending) return;
   if (currentHostPopup?.resolution || hostPopupQueue.some(p => p.resolution)) return;
   state.hostResolutionPending = false;
+  state._hostResolutionPending = false;
   state.hostPopupBacklog = [];
   saveCurrentToLS();
   renderAll();
@@ -1626,7 +1664,8 @@ function restoreHostPopupQueue() {
   const saved = Array.isArray(state.hostPopupBacklog) ? state.hostPopupBacklog : [];
   state.hostPopupBacklog = [];
   saved.forEach(popup => queueHostPopup(popup));
-  if (!saved.length && state.hostResolutionPending) state.hostResolutionPending = false;
+  normalizeHostResolutionState();
+  if (state.hostResolutionPending) showPendingHostResolutionIfNeeded();
 }
 
 function enqueueHostJokerRequest(actionKey, playerName, jokerId, ts) {
@@ -1744,6 +1783,7 @@ function resetMarathonRuntime(options = {}) {
   hostPopupQueue.length = 0;
   hostPopupActive = false;
   currentHostPopup = null;
+  state._hostResolutionPending = false;
   hostJokerRequestQueue = [];
   activeHostJokerRequest = null;
 
@@ -1755,6 +1795,7 @@ function resetMarathonRuntime(options = {}) {
   if (ms && window._marathonScreenHTML) ms.innerHTML = window._marathonScreenHTML;
 
   document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  normalizeHostResolutionState();
   if (clearAutosave) {
     const sessions = getSessions();
     if (sessions.__autosave__) {
@@ -2820,6 +2861,14 @@ function renderPointsOverview() {
 //  MARATHON START
 // ═══════════════════════════════════════════════════════════
 function startMarathon() {
+  hostPopupQueue.length = 0;
+  hostPopupActive = false;
+  currentHostPopup = null;
+  state.hostPopupBacklog = [];
+  state.hostResolutionPending = false;
+  state._hostResolutionPending = false;
+  document.getElementById('modal-host-popup')?.classList.remove('open');
+  normalizeHostResolutionState();
   if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
   const compatible = getCompatibleGames();
   if (!compatible.length) { showToast('Keine kompatiblen Spiele für diese Spielerzahl!'); return; }
@@ -3081,7 +3130,7 @@ function rerollRule() {
 //  GAME FLOW
 // ═══════════════════════════════════════════════════════════
 function nextGame() {
-  if (state.hostResolutionPending || currentHostPopup?.resolution || hostPopupQueue.some(p => p.resolution)) {
+  if (showPendingHostResolutionIfNeeded()) {
     showToast('Bitte zuerst alle Ergebnis-Auflösungen bestätigen.');
     return;
   }
@@ -3133,7 +3182,7 @@ function canShowRandomEvent() {
 }
 
 function _doNextGame() {
-  if (state.hostResolutionPending) return;
+  if (showPendingHostResolutionIfNeeded()) return;
   state.postGameWindow = false;
   state.currentIdx++;
   while (state.currentIdx < state.plan.length && state.plan[state.currentIdx].done) state.currentIdx++;
@@ -3149,7 +3198,7 @@ function _doNextGame() {
 }
 
 function startGameVoteRound() {
-  if (state.hostResolutionPending) return;
+  if (showPendingHostResolutionIfNeeded()) return;
   state.postGameWindow = false;
   state.currentGameStarted = false;
   state.preGameWindow = false;
@@ -4272,6 +4321,10 @@ function selectCoop(r) {
 }
 
 function submitResult(type) {
+  if (showPendingHostResolutionIfNeeded()) {
+    showToast('Bitte zuerst alle Ergebnis-Auflösungen bestätigen.');
+    return;
+  }
   if (!state.currentGameStarted || state.preGameWindow || state.gamePhase !== 'playing') {
     showToast('Bitte das Spiel zuerst starten.');
     return;
@@ -5038,6 +5091,11 @@ function loadSession(id) {
   const s = sessions[id];
   if (!s) return;
   tournamentHomeLock = false;
+  hostPopupQueue.length = 0;
+  hostPopupActive = false;
+  currentHostPopup = null;
+  state._hostResolutionPending = false;
+  document.getElementById('modal-host-popup')?.classList.remove('open');
   state.settings = {
     eventsEnabled: s.settings?.eventsEnabled !== false,
     secretGoalsEnabled: s.settings?.secretGoalsEnabled !== false
@@ -5134,6 +5192,7 @@ function loadSession(id) {
   if (state._setupPhase === 'gameVote') window.renderGameVoteHost();
   else if (state.currentIdx >= 0) renderCurrentGame();
   restoreHostPopupQueue();
+  normalizeHostResolutionState();
   showToast(`Session „${s.name}" geladen ✓`);
 }
 
@@ -5332,7 +5391,7 @@ function openTournamentDetail(id) {
 //  END SCREEN
 // ═══════════════════════════════════════════════════════════
 function showEndScreen() {
-  if (state.hostResolutionPending || currentHostPopup?.resolution || hostPopupQueue.some(p => p.resolution)) {
+  if (showPendingHostResolutionIfNeeded()) {
     showToast('Der Abschluss wartet auf die Bestätigung aller Auflösungen.');
     return;
   }
@@ -5666,6 +5725,9 @@ function saveCurrentToLS() {
     currentGameInstanceId:state.currentGameInstanceId || null,
     activeDoubleOrNothing:state.activeDoubleOrNothing || {},
     processedDoubleActions:state._processedDoubleActions || {},
+    hostResolutionPending:!!state.hostResolutionPending,
+    hostPopupBacklog:Array.isArray(state.hostPopupBacklog) ? state.hostPopupBacklog : [],
+    processedHostPopupIds:state._processedHostPopupIds || {},
     setupPhase:state._setupPhase || null, marathonStarted:!!state._marathonStarted, marathonFinished:!!state._marathonFinished,
   };
   setSessions(sessions);
@@ -8343,6 +8405,14 @@ function smMobileRenderEndScreen(data, playerName) {
 // Start now prepares a private phone-based joker-pick phase when Firebase works.
 window.startMarathon = function startMarathon() {
   tournamentHomeLock = false;
+  hostPopupQueue.length = 0;
+  hostPopupActive = false;
+  currentHostPopup = null;
+  state.hostPopupBacklog = [];
+  state.hostResolutionPending = false;
+  state._hostResolutionPending = false;
+  document.getElementById('modal-host-popup')?.classList.remove('open');
+  normalizeHostResolutionState();
   if (state.players.length < 2) { showToast('Mindestens 2 Spieler nötig!'); return; }
   const compatible = getCompatibleGames();
   if (!compatible.length) { showToast('Keine kompatiblen Spiele für diese Spielerzahl!'); return; }
